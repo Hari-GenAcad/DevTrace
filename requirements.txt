@@ -1,0 +1,7 @@
+pydantic
+chromadb
+sentence-transformers
+rank_bm25
+pytest
+streamlit
+google-generativeai
