@@ -1,0 +1,379 @@
+[
+  {
+    "doc_id": "AUTH-001",
+    "title": "Resolving AUTH_401 Unauthorized Errors — SDK 2.x",
+    "content": "Symptom: Requests return HTTP 401 with error code AUTH_401.\n\nAffected versions: DevCore SDK 2.x (2.0 through 2.9).\n\nCause: In SDK 2.x, the Authorization header must be sent as a raw API key in the format 'Authorization: ApiKey <your_key>'. The server validates this key directly against the registered credentials store.\n\nDiagnostic clues:\n- Check that the Authorization header is present on every request.\n- Verify the API key is not expired (keys created before 2023-01 may have a 12-month TTL).\n- Confirm the key has the 'read' and 'write' scopes required by the endpoint.\n- If using the SDK client, ensure you called DevCoreClient.configure(api_key='...') before making requests.\n\nRecommended fix:\n1. Retrieve a fresh API key from the DevCore dashboard.\n2. Pass it to DevCoreClient.configure(api_key='<fresh_key>').\n3. Retry the request.\n\nLimitation: API keys in SDK 2.x are account-scoped. Per-application keys are only supported starting with SDK 3.0.",
+    "applies_to": ">=2.0,<3.0",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "error_codes": ["AUTH_401"],
+      "last_updated": "2024-01"
+    }
+  },
+  {
+    "doc_id": "AUTH-002",
+    "title": "Resolving AUTH_401 Unauthorized Errors — SDK 3.x",
+    "content": "Symptom: Requests return HTTP 401 with error code AUTH_401.\n\nAffected versions: DevCore SDK 3.x (3.0 and above).\n\nCause: SDK 3.x moved from raw API key authentication to OAuth 2.0 Bearer tokens. The old 'Authorization: ApiKey <key>' header format is no longer accepted. Clients must obtain a short-lived Bearer token from the /auth/token endpoint and send it as 'Authorization: Bearer <token>'.\n\nThis is the most common cause of AUTH_401 after upgrading from SDK 2.x to SDK 3.x.\n\nDiagnostic clues:\n- If you are sending 'Authorization: ApiKey ...', this is the problem.\n- Check that your token has not expired. Tokens in SDK 3.x expire after 3600 seconds by default.\n- Verify the client_id and client_secret used to obtain the token are correct.\n- Inspect the WWW-Authenticate response header; it will say 'Bearer realm=devcore' if the server is expecting a Bearer token.\n\nRecommended fix:\n1. Remove any existing ApiKey header logic.\n2. Call DevCoreClient.authenticate(client_id='...', client_secret='...') to obtain a Bearer token.\n3. The SDK will manage token refresh automatically when using the high-level client.\n4. If using raw HTTP, implement token refresh before the 3600s window expires.\n\nNote: API keys from SDK 2.x cannot be reused as Bearer token credentials. You must provision OAuth 2.0 client credentials in the DevCore dashboard under Settings > API Access > OAuth Clients.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "error_codes": ["AUTH_401"],
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "AUTH-003",
+    "title": "Resolving AUTH_403 Forbidden Errors",
+    "content": "Symptom: Requests return HTTP 403 with error code AUTH_403.\n\nAffected versions: All SDK versions.\n\nCause: AUTH_403 means the credential is valid and the identity is confirmed, but the authenticated principal does not have permission to access the requested resource. This is a scope or role problem, not a credential format problem.\n\nDo not confuse with AUTH_401 (which means the credential itself was not accepted).\n\nDiagnostic clues:\n- Confirm the OAuth client or API key has the required scope for the endpoint.\n- For write operations, the 'write' scope must be explicitly granted.\n- For admin endpoints, the 'admin' scope is required.\n- Check whether the resource belongs to a different organization than the authenticated principal.\n\nRecommended fix:\n1. Navigate to Settings > API Access in the DevCore dashboard.\n2. Edit the credential and add the missing scope.\n3. If using OAuth 2.0, re-authenticate to obtain a new token with updated scopes (tokens do not update automatically when scopes change).\n4. Retry the request.",
+    "applies_to": "*",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "error_codes": ["AUTH_403"],
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "AUTH-004",
+    "title": "Token Expiry and Refresh — SDK 3.x",
+    "content": "Symptom: Requests succeed initially but begin returning AUTH_401 after approximately one hour.\n\nAffected versions: DevCore SDK 3.x.\n\nCause: Bearer tokens issued by the /auth/token endpoint expire after 3600 seconds. If the application does not implement token refresh, requests will fail once the token expires.\n\nDiagnostic clues:\n- AUTH_401 errors appear on a periodic cycle (roughly every hour).\n- The WWW-Authenticate header includes 'error=token_expired'.\n- The error does not occur immediately after startup, only after prolonged operation.\n\nRecommended fix:\n1. Use the high-level DevCoreClient; it handles token refresh automatically.\n2. If using raw HTTP, implement proactive refresh: call /auth/token 60 seconds before the current token expires.\n3. Store the 'expires_in' value from the token response and track elapsed time.\n4. Never hard-code a token. Always obtain it programmatically.\n\nNote: Refresh tokens have a 30-day TTL. If the refresh token also expires, the user or service must re-authenticate from scratch.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "error_codes": ["AUTH_401"],
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "AUTH-005",
+    "title": "API Key Management — SDK 2.x",
+    "content": "Overview: In SDK 2.x, DevCore uses long-lived API keys for authentication. Keys are created in the DevCore dashboard and are account-scoped by default.\n\nAffected versions: DevCore SDK 2.x.\n\nKey properties:\n- API keys are 64-character hex strings.\n- Keys do not expire automatically unless a TTL is configured at creation time.\n- All keys in an account share the same permission scope (account-level access).\n- Keys can be revoked immediately from the dashboard.\n\nCreating a key:\n1. Log in to the DevCore dashboard.\n2. Navigate to Settings > API Access.\n3. Click 'Create API Key'.\n4. Copy the key immediately; it will not be shown again.\n\nUsing a key:\n- Set the Authorization header: 'Authorization: ApiKey <key>'.\n- Or use DevCoreClient.configure(api_key='<key>').\n\nWarning: Do not embed API keys directly in client-side code or version control systems. Use environment variables or a secrets manager.",
+    "applies_to": ">=2.0,<3.0",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2023-12"
+    }
+  },
+  {
+    "doc_id": "RATE-001",
+    "title": "Rate Limiting and HTTP 429 Errors",
+    "content": "Symptom: Requests return HTTP 429 Too Many Requests with error code RATE_429.\n\nAffected versions: All SDK versions.\n\nCause: DevCore enforces rate limits to prevent abuse and ensure fair resource distribution across clients. When the limit is exceeded, the server returns 429.\n\nDefault rate limits:\n- Standard tier: 100 requests per minute per API key or OAuth client.\n- Pro tier: 1000 requests per minute.\n- Enterprise tier: configurable.\n\nDiagnostic clues:\n- Errors occur in bursts, typically during high-volume operations.\n- The 'Retry-After' response header indicates the number of seconds to wait.\n- The 'X-RateLimit-Remaining' header shows how many requests remain in the current window.\n\nRecommended fix:\n1. Read the 'Retry-After' header and implement an exponential backoff retry strategy.\n2. Reduce request frequency where possible.\n3. Use bulk endpoints where available instead of sending individual requests.\n4. If sustained high throughput is needed, upgrade to the Pro or Enterprise tier.\n\nImportant: Retrying immediately after a 429 will simply produce another 429. Always respect the Retry-After window.",
+    "applies_to": "*",
+    "topic": "rate_limiting",
+    "metadata": {
+      "product": "DevCore API",
+      "error_codes": ["RATE_429"],
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "RATE-002",
+    "title": "Rate Limit Headers and Monitoring",
+    "content": "DevCore includes rate-limit status headers on every response to help clients monitor consumption and avoid hitting limits.\n\nAffected versions: All SDK versions.\n\nHeaders:\n- X-RateLimit-Limit: Total requests allowed in the current window.\n- X-RateLimit-Remaining: Requests remaining in the current window.\n- X-RateLimit-Reset: Unix timestamp when the window resets.\n- Retry-After: Only present on 429 responses; seconds until the next request can be sent.\n\nBest practices:\n- Log X-RateLimit-Remaining and alert when it falls below 10%.\n- Implement adaptive throttling: slow down proactively as Remaining approaches zero.\n- Do not poll the API to check remaining quota; each poll consumes quota.",
+    "applies_to": "*",
+    "topic": "rate_limiting",
+    "metadata": {
+      "product": "DevCore API",
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "WEBHOOK-001",
+    "title": "Webhook Delivery Failures — SDK 2.x",
+    "content": "Symptom: Webhooks are not being received, or the DevCore dashboard shows delivery failures.\n\nAffected versions: DevCore SDK 2.x.\n\nCause: In SDK 2.x, webhook payloads are sent over plain HTTP POST with an HMAC-SHA1 signature in the 'X-DevCore-Signature' header. If the receiving endpoint is unavailable, returns a non-2xx status, or times out in under 5 seconds, DevCore marks the delivery as failed.\n\nRetry behavior: SDK 2.x retries failed webhooks up to 3 times with a 60-second interval between attempts.\n\nDiagnostic clues:\n- Check the Webhook Delivery Logs in the dashboard.\n- Confirm the endpoint URL is reachable from external networks.\n- Verify the endpoint responds within 5 seconds (SDK 2.x default timeout).\n- Check HMAC-SHA1 signature validation in your endpoint code.\n\nRecommended fix:\n1. Ensure the endpoint returns HTTP 200 within 5 seconds.\n2. Offload heavy processing to a background queue; return 200 immediately.\n3. Validate the X-DevCore-Signature header using your webhook secret and HMAC-SHA1.",
+    "applies_to": ">=2.0,<3.0",
+    "topic": "webhooks",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-01"
+    }
+  },
+  {
+    "doc_id": "WEBHOOK-002",
+    "title": "Webhook Delivery Failures — SDK 3.x",
+    "content": "Symptom: Webhooks are not being received, or the DevCore dashboard shows delivery failures.\n\nAffected versions: DevCore SDK 3.x.\n\nCause: SDK 3.x upgraded webhook security from HMAC-SHA1 to HMAC-SHA256. The signature header is now 'X-DevCore-Signature-256'. Endpoints that still validate HMAC-SHA1 ('X-DevCore-Signature') will reject valid SDK 3.x payloads, causing 401 or 400 responses, which DevCore treats as delivery failures.\n\nRetry behavior: SDK 3.x retries failed webhooks up to 5 times with exponential backoff starting at 30 seconds.\n\nDiagnostic clues:\n- Webhook delivery logs show 401 or 400 responses from your endpoint.\n- Your code references 'X-DevCore-Signature' instead of 'X-DevCore-Signature-256'.\n- Failure rate spiked immediately after upgrading to SDK 3.x.\n\nRecommended fix:\n1. Update your signature validation to use HMAC-SHA256 with the 'X-DevCore-Signature-256' header.\n2. During transition, you may accept both signature headers temporarily.\n3. Ensure your endpoint responds within 10 seconds (SDK 3.x extended the timeout from 5s to 10s).\n\nNote: The webhook secret is the same across versions; only the algorithm changed.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "webhooks",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "WEBHOOK-003",
+    "title": "Webhook Endpoint Requirements — All Versions",
+    "content": "This document describes the minimum requirements for a webhook-receiving endpoint that is compatible with all DevCore SDK versions.\n\nAffected versions: All.\n\nEndpoint requirements:\n1. Must accept HTTP POST requests.\n2. Must respond with HTTP 2xx status within the timeout window.\n3. Must handle duplicate delivery (DevCore may retry after network issues even after a successful delivery).\n\nIdempotency: Implement idempotency using the 'X-DevCore-Event-ID' header. Store processed event IDs and skip re-processing duplicates.\n\nPayload format: JSON with Content-Type: application/json.\n\nTimeout:\n- SDK 2.x: 5 seconds.\n- SDK 3.x: 10 seconds.\n\nSignature algorithm:\n- SDK 2.x: HMAC-SHA1 in X-DevCore-Signature.\n- SDK 3.x: HMAC-SHA256 in X-DevCore-Signature-256.",
+    "applies_to": "*",
+    "topic": "webhooks",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "SDK-001",
+    "title": "SDK 2.x to 3.x Migration Guide",
+    "content": "This guide covers the breaking changes when upgrading from DevCore SDK 2.x to SDK 3.x.\n\nAffected migration path: 2.x → 3.x.\n\nBreaking changes:\n\n1. Authentication mechanism changed from API key ('Authorization: ApiKey <key>') to OAuth 2.0 Bearer tokens ('Authorization: Bearer <token>'). See AUTH-002 for details.\n\n2. Webhook signature algorithm changed from HMAC-SHA1 to HMAC-SHA256. Update your signature validation code before upgrading.\n\n3. The SDK client initialization API changed:\n   - SDK 2.x: DevCoreClient.configure(api_key='...')\n   - SDK 3.x: DevCoreClient.authenticate(client_id='...', client_secret='...')\n\n4. Timestamp format changed from Unix epoch integers to ISO 8601 strings. Any code that parses timestamps as integers will break.\n\n5. Pagination now uses cursor-based pagination instead of offset/limit. The 'offset' and 'limit' query parameters are no longer supported; use 'cursor' and 'page_size' instead.\n\nMigration steps:\n1. Provision OAuth 2.0 client credentials in the DevCore dashboard.\n2. Update authentication code to use Bearer tokens.\n3. Update webhook signature validation.\n4. Update timestamp parsing.\n5. Update pagination handling.\n6. Run your test suite against the staging environment before deploying to production.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "migration",
+    "metadata": {
+      "product": "DevCore SDK",
+      "migration_from": "2.x",
+      "migration_to": "3.x",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "SDK-002",
+    "title": "SDK Configuration Reference — SDK 2.x",
+    "content": "Configuration reference for DevCore SDK 2.x.\n\nAffected versions: SDK 2.x.\n\nInitialization:\n  import devcore\n  devcore.configure(\n      api_key='your_api_key',\n      base_url='https://api.devcore.io/v2',  # Optional; defaults to production\n      timeout=30,                              # Request timeout in seconds\n      retries=3                                # Automatic retry count on transient errors\n  )\n\nEnvironment variables:\n  DEVCORE_API_KEY        — API key (used if api_key not passed to configure())\n  DEVCORE_BASE_URL       — Base URL override\n  DEVCORE_TIMEOUT        — Timeout in seconds\n  DEVCORE_LOG_LEVEL      — Logging level (DEBUG, INFO, WARNING, ERROR)\n\nProxy configuration:\n  Set HTTPS_PROXY environment variable or pass proxies dict to configure().\n\nLogging:\n  DevCore SDK 2.x uses Python's standard logging module. Configure the 'devcore' logger in your application's logging setup.",
+    "applies_to": ">=2.0,<3.0",
+    "topic": "configuration",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2023-12"
+    }
+  },
+  {
+    "doc_id": "SDK-003",
+    "title": "SDK Configuration Reference — SDK 3.x",
+    "content": "Configuration reference for DevCore SDK 3.x.\n\nAffected versions: SDK 3.x.\n\nInitialization:\n  import devcore\n  client = devcore.DevCoreClient(\n      client_id='your_client_id',\n      client_secret='your_client_secret',\n      base_url='https://api.devcore.io/v3',  # Optional\n      timeout=30,\n      retries=3\n  )\n\nEnvironment variables:\n  DEVCORE_CLIENT_ID      — OAuth client ID\n  DEVCORE_CLIENT_SECRET  — OAuth client secret\n  DEVCORE_BASE_URL       — Base URL override\n  DEVCORE_TIMEOUT        — Timeout in seconds\n  DEVCORE_LOG_LEVEL      — Logging verbosity\n\nKey differences from SDK 2.x:\n- DEVCORE_API_KEY is no longer used; use DEVCORE_CLIENT_ID and DEVCORE_CLIENT_SECRET.\n- The client object is instantiated rather than calling a global configure() function.\n- Token management is handled automatically by the client object.\n\nLogging:\n  SDK 3.x integrates with OpenTelemetry for structured observability. Configure via OTEL_* environment variables.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "configuration",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "SDK-004",
+    "title": "General SDK Troubleshooting Checklist",
+    "content": "Use this checklist when encountering unexpected behavior with the DevCore SDK before filing a support ticket.\n\nAffected versions: All.\n\nChecklist:\n1. Verify your SDK version with devcore.__version__.\n2. Check the DevCore status page at status.devcore.io for ongoing incidents.\n3. Confirm your credentials are valid by testing them in the DevCore dashboard.\n4. Enable DEBUG logging (DEVCORE_LOG_LEVEL=DEBUG) and inspect request/response details.\n5. Ensure your network allows outbound HTTPS to api.devcore.io on port 443.\n6. Check for proxy or firewall rules that may be stripping authorization headers.\n7. Reproduce the issue in a minimal test script to isolate the problem.\n8. Compare behavior against the relevant version's documentation (2.x vs 3.x have different auth flows).\n\nIf the checklist does not resolve the issue, collect the following before contacting support:\n- SDK version\n- Python version\n- Error code and full error message\n- Minimal reproducible example",
+    "applies_to": "*",
+    "topic": "troubleshooting",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "API-001",
+    "title": "HTTP Request Timeouts and ERR_TIMEOUT",
+    "content": "Symptom: API calls fail with ERR_TIMEOUT or never return.\n\nAffected versions: All.\n\nCause: The default request timeout is 30 seconds. Requests that do not receive a complete response within this window are aborted and raise ERR_TIMEOUT.\n\nDiagnostic clues:\n- Errors occur consistently on specific endpoints that perform heavy computation or large data exports.\n- Intermittent timeouts may indicate transient network congestion.\n- Timeouts during authentication suggest a DNS or connectivity issue.\n\nRecommended fix:\n1. Increase the timeout for specific heavy operations:\n   - SDK 2.x: devcore.configure(timeout=120)\n   - SDK 3.x: devcore.DevCoreClient(..., timeout=120)\n2. For large data exports, use the async export API which returns a job ID; poll for completion.\n3. Implement retry with exponential backoff for transient timeouts.\n4. Check network connectivity and DNS resolution from the client environment.",
+    "applies_to": "*",
+    "topic": "networking",
+    "metadata": {
+      "product": "DevCore API",
+      "error_codes": ["ERR_TIMEOUT"],
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "API-002",
+    "title": "Pagination — SDK 2.x (Offset-Based)",
+    "content": "DevCore SDK 2.x uses offset-based pagination for list endpoints.\n\nAffected versions: SDK 2.x.\n\nQuery parameters:\n  offset  — Starting index (zero-based). Default: 0.\n  limit   — Maximum records to return per page. Max: 100. Default: 20.\n\nResponse fields:\n  data    — Array of records.\n  total   — Total record count.\n  offset  — Echo of the request offset.\n  limit   — Echo of the request limit.\n\nExample: Fetching page 2 with 20 items per page:\n  GET /v2/events?offset=20&limit=20\n\nWarning: Offset pagination is susceptible to drift if records are inserted or deleted between requests. For stable snapshots, use timestamp-bounded queries.",
+    "applies_to": ">=2.0,<3.0",
+    "topic": "api_behavior",
+    "metadata": {
+      "product": "DevCore API",
+      "last_updated": "2024-01"
+    }
+  },
+  {
+    "doc_id": "API-003",
+    "title": "Pagination — SDK 3.x (Cursor-Based)",
+    "content": "DevCore SDK 3.x uses cursor-based pagination for list endpoints. The offset/limit parameters from SDK 2.x are no longer supported.\n\nAffected versions: SDK 3.x.\n\nQuery parameters:\n  cursor    — Opaque cursor string from a previous response. Omit for the first page.\n  page_size — Records per page. Max: 100. Default: 20.\n\nResponse fields:\n  data        — Array of records.\n  next_cursor — Cursor for the next page. null if no more pages.\n  has_more    — Boolean indicating whether more pages exist.\n\nExample: Fetching the first page:\n  GET /v3/events?page_size=20\n\nFetching the next page:\n  GET /v3/events?cursor=<next_cursor_value>&page_size=20\n\nNote: Cursor values are opaque and must not be parsed or constructed manually. Using offset/limit parameters on SDK 3.x endpoints will return a 400 Bad Request error.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "api_behavior",
+    "metadata": {
+      "product": "DevCore API",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "API-004",
+    "title": "Timestamp Format Changes — SDK 3.x",
+    "content": "Symptom: Code that worked in SDK 2.x raises ValueError or TypeError when parsing timestamps after upgrading to SDK 3.x.\n\nAffected versions: Breaking change in SDK 3.x; previously SDK 2.x.\n\nCause: In SDK 2.x, all timestamps in API responses were Unix epoch integers (e.g. 1704067200). In SDK 3.x, timestamps are ISO 8601 strings (e.g. '2024-01-01T00:00:00Z'). Any code that treats timestamps as integers will break after upgrading.\n\nDiagnostic clues:\n- Errors occur when parsing or comparing timestamps from API responses.\n- Error messages mention int/str type mismatches or invalid date format strings.\n\nRecommended fix:\n1. Update all timestamp parsing to use ISO 8601 string parsing:\n   Python: datetime.fromisoformat(ts.replace('Z', '+00:00'))\n2. If you need to compare timestamps, parse them to datetime objects first.\n3. When writing timestamps back to the API, use ISO 8601 format.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "api_behavior",
+    "metadata": {
+      "product": "DevCore API",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "API-005",
+    "title": "Error Response Format",
+    "content": "All DevCore API errors follow a consistent JSON response format.\n\nAffected versions: All.\n\nError response structure:\n  {\n    'error': {\n      'code': '<ERROR_CODE>',\n      'message': '<human-readable description>',\n      'request_id': '<trace_id for support>',\n      'details': {}\n    }\n  }\n\nThe 'code' field matches the error code constants used in this documentation (e.g. AUTH_401, RATE_429).\nThe 'request_id' should be provided when contacting support.\nThe 'details' field may contain structured additional context depending on the error type.\n\nCommon HTTP status to error code mapping:\n  401 → AUTH_401\n  403 → AUTH_403\n  404 → NOT_FOUND\n  422 → VALIDATION_ERR\n  429 → RATE_429\n  500 → SERVER_ERR\n  503 → SERVICE_UNAVAILABLE",
+    "applies_to": "*",
+    "topic": "api_behavior",
+    "metadata": {
+      "product": "DevCore API",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "CFG-001",
+    "title": "Environment Variable Configuration Guide",
+    "content": "DevCore SDK can be configured entirely through environment variables, which is recommended for production deployments.\n\nAffected versions: All (variable names differ between SDK versions).\n\nSDK 2.x environment variables:\n  DEVCORE_API_KEY        — Required. Your API key.\n  DEVCORE_BASE_URL       — Optional. Override the API base URL.\n  DEVCORE_TIMEOUT        — Optional. Request timeout in seconds (default 30).\n  DEVCORE_LOG_LEVEL      — Optional. Log level (DEBUG/INFO/WARNING/ERROR).\n\nSDK 3.x environment variables:\n  DEVCORE_CLIENT_ID      — Required. OAuth 2.0 client ID.\n  DEVCORE_CLIENT_SECRET  — Required. OAuth 2.0 client secret.\n  DEVCORE_BASE_URL       — Optional. Override the API base URL.\n  DEVCORE_TIMEOUT        — Optional. Request timeout in seconds (default 30).\n  DEVCORE_LOG_LEVEL      — Optional. Log level.\n\nImportant: DEVCORE_API_KEY is ignored in SDK 3.x. If it is set but DEVCORE_CLIENT_ID is missing, SDK 3.x will fail to authenticate with AUTH_401.",
+    "applies_to": "*",
+    "topic": "configuration",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "CFG-002",
+    "title": "Proxy Configuration for Restricted Environments",
+    "content": "If your environment routes outbound traffic through an HTTP proxy, you must configure DevCore SDK to use it.\n\nAffected versions: All.\n\nConfiguration:\n  Set the HTTPS_PROXY environment variable:\n    export HTTPS_PROXY=http://proxy.yourcompany.com:8080\n\nOr pass it programmatically:\n  SDK 2.x: devcore.configure(proxies={'https': 'http://proxy:8080'})\n  SDK 3.x: devcore.DevCoreClient(..., proxies={'https': 'http://proxy:8080'})\n\nCommon issues:\n- Proxy that strips the Authorization header: Contact your network team to whitelist api.devcore.io.\n- SSL inspection proxy: Install the proxy's CA certificate in your system trust store.\n- NTLM authentication proxy: Use the requests-ntlm package and configure the appropriate auth handler.\n\nVerification: Run curl -v -x http://proxy:8080 https://api.devcore.io/health to confirm connectivity.",
+    "applies_to": "*",
+    "topic": "networking",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "ERR-001",
+    "title": "VALIDATION_ERR — Request Validation Failures",
+    "content": "Symptom: API requests return HTTP 422 with error code VALIDATION_ERR.\n\nAffected versions: All.\n\nCause: The request body or query parameters failed server-side validation. This is a client error — the API received the request but rejected it because required fields were missing or field values were invalid.\n\nDiagnostic clues:\n- The error 'details' field contains per-field validation messages.\n- Common causes: missing required fields, invalid enum values, wrong data types, values outside allowed range.\n\nRecommended fix:\n1. Read the 'details' field in the error response carefully.\n2. Correct the offending field(s) in your request.\n3. Consult the API reference for the specific endpoint's required fields and valid values.\n\nNote: VALIDATION_ERR is always a client-side problem; retrying the same request without changes will always produce the same error.",
+    "applies_to": "*",
+    "topic": "errors",
+    "metadata": {
+      "product": "DevCore API",
+      "error_codes": ["VALIDATION_ERR"],
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "ERR-002",
+    "title": "SERVICE_UNAVAILABLE — Handling 503 Errors",
+    "content": "Symptom: API requests return HTTP 503 with error code SERVICE_UNAVAILABLE.\n\nAffected versions: All.\n\nCause: The DevCore API is temporarily unavailable, likely due to a maintenance window, deployment, or capacity issue on the server side. This is not a client error.\n\nDiagnostic clues:\n- Errors affect all endpoints simultaneously.\n- The DevCore status page (status.devcore.io) shows an active incident.\n- Errors resolve without any client-side changes.\n\nRecommended fix:\n1. Do not retry immediately — implement exponential backoff.\n2. Monitor the Retry-After header if present.\n3. Check status.devcore.io for an ETA on resolution.\n4. Implement a circuit breaker to avoid overwhelming the server during recovery.",
+    "applies_to": "*",
+    "topic": "errors",
+    "metadata": {
+      "product": "DevCore API",
+      "error_codes": ["SERVICE_UNAVAILABLE"],
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "ERR-003",
+    "title": "NOT_FOUND — Resource Does Not Exist",
+    "content": "Symptom: API requests return HTTP 404 with error code NOT_FOUND.\n\nAffected versions: All.\n\nCause: The requested resource does not exist, has been deleted, or the caller does not have permission to see it (DevCore returns 404 rather than 403 for hidden resources to avoid information leakage).\n\nDiagnostic clues:\n- Confirm the resource ID in the request URL is correct.\n- Verify the resource was not recently deleted.\n- Confirm the authenticated principal has access to the resource's organization.\n\nRecommended fix:\n1. Double-check the resource ID.\n2. If the resource should exist, verify it in the DevCore dashboard.\n3. Confirm you are authenticating with credentials from the same organization that owns the resource.",
+    "applies_to": "*",
+    "topic": "errors",
+    "metadata": {
+      "product": "DevCore API",
+      "error_codes": ["NOT_FOUND"],
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "PERF-001",
+    "title": "Connection Pooling and Performance",
+    "content": "This document describes connection pooling behavior and performance recommendations for high-throughput DevCore API usage.\n\nAffected versions: All.\n\nConnection pooling:\n- DevCore SDK uses urllib3 connection pools internally.\n- By default, up to 10 connections are maintained per host.\n- For high-throughput workloads, increase the pool size:\n  SDK 2.x: devcore.configure(pool_connections=20, pool_maxsize=50)\n  SDK 3.x: devcore.DevCoreClient(..., pool_connections=20, pool_maxsize=50)\n\nPerformance tips:\n1. Reuse the client object across requests; do not instantiate a new client per request.\n2. Use bulk endpoints where available.\n3. For read-heavy workloads, consider caching API responses locally with a short TTL.\n4. Avoid polling — use webhooks for event-driven updates.\n5. Minimize request overhead by sending only required fields.\n\nBenchmark: A single DevCore SDK client on a modern server can sustain 200–500 requests/second within rate limits.",
+    "applies_to": "*",
+    "topic": "performance",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "PERF-002",
+    "title": "Bulk Operations API",
+    "content": "DevCore provides bulk operation endpoints to reduce the number of API calls needed for batch processing.\n\nAffected versions: All (endpoint paths differ between API versions).\n\nSDK 2.x bulk endpoints:\n  POST /v2/events/bulk  — Create up to 100 events in one request.\n  POST /v2/users/bulk   — Create up to 50 users in one request.\n\nSDK 3.x bulk endpoints:\n  POST /v3/batch        — Generic batch endpoint supporting mixed operation types.\n                         Up to 100 operations per batch request.\n\nUsage considerations:\n- A failed operation within a batch does not abort other operations.\n- Per-operation results are returned in the response array in the same order as the request.\n- The batch endpoint is subject to the same rate limits as individual endpoints, but counts as one request for rate-limit purposes regardless of batch size.",
+    "applies_to": "*",
+    "topic": "api_behavior",
+    "metadata": {
+      "product": "DevCore API",
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "TS-001",
+    "title": "Diagnosing Intermittent Authentication Failures",
+    "content": "Symptom: AUTH_401 errors occur intermittently rather than consistently.\n\nAffected versions: SDK 3.x primarily; can occur in SDK 2.x if API key is shared across processes.\n\nCause: Intermittent AUTH_401 in SDK 3.x is almost always caused by a race condition in token refresh logic, particularly in multi-threaded or multi-process applications.\n\nScenario: Two threads both detect token expiry simultaneously and both attempt to obtain a new token. One thread succeeds first, invalidating the token obtained by the second thread before it can be used.\n\nDiagnostic clues:\n- Failures occur only under concurrent load.\n- Errors correlate with times when the token is near expiry.\n- Restarting the process temporarily resolves the issue.\n\nRecommended fix:\n1. Use the high-level DevCoreClient object, which handles token refresh with a thread-safe lock.\n2. If managing tokens manually, use a mutex/lock around the token refresh check-and-update operation.\n3. Use a shared token store with atomic compare-and-swap semantics in multi-process scenarios.\n4. Never share a token across independent processes without synchronization.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "error_codes": ["AUTH_401"],
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "TS-002",
+    "title": "Diagnosing Webhook Signature Validation Failures",
+    "content": "Symptom: Your endpoint consistently rejects DevCore webhook deliveries with 400 or 401, even though the secret appears correct.\n\nAffected versions: All.\n\nThis document covers signature validation failures that are NOT caused by the SHA1 vs SHA256 algorithm change (see WEBHOOK-001 and WEBHOOK-002 for that scenario).\n\nCommon causes of signature validation failure:\n1. Whitespace or newline appended to the secret when reading from an environment variable.\n2. The raw request body was parsed as JSON before computing the HMAC (the HMAC must be computed over the raw bytes).\n3. The signature comparison is using string equality instead of hmac.compare_digest (timing attack risk, and some encodings may differ).\n4. The webhook secret was rotated in the dashboard but the application was not redeployed with the new secret.\n\nRecommended fix:\n1. Trim whitespace from the secret value: secret = os.environ['WEBHOOK_SECRET'].strip()\n2. Compute HMAC over request.body (raw bytes), not json.loads(request.body).\n3. Use hmac.compare_digest() for constant-time comparison.\n4. After rotating the webhook secret, redeploy or restart the service.",
+    "applies_to": "*",
+    "topic": "webhooks",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "TS-003",
+    "title": "SDK Initialization Errors — Missing or Invalid Credentials",
+    "content": "Symptom: The DevCore SDK raises an error during initialization before any API call is made.\n\nAffected versions: All.\n\nCause: The SDK validates credentials at initialization time. If required credentials are missing or malformed, initialization fails immediately.\n\nSDK 2.x error: ConfigurationError: DEVCORE_API_KEY is not set.\nSDK 3.x error: ConfigurationError: DEVCORE_CLIENT_ID and DEVCORE_CLIENT_SECRET are required.\n\nDiagnostic clues:\n- The error is raised at DevCoreClient() or devcore.configure(), not during a request.\n- The error message names the specific missing variable.\n\nRecommended fix:\n1. Ensure the environment variable is set in the process environment.\n2. Do not rely on .env files being loaded automatically; use python-dotenv or similar.\n3. Confirm the variable name matches exactly (DEVCORE_CLIENT_ID, not DEVCORE_CLIENT_KEY).\n4. For Docker/Kubernetes: ensure the secret is mounted or injected into the container environment.",
+    "applies_to": "*",
+    "topic": "configuration",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  },
+  {
+    "doc_id": "TS-004",
+    "title": "AUTH_401 After Rotating OAuth Client Secret — SDK 3.x",
+    "content": "Symptom: AUTH_401 errors begin immediately after rotating an OAuth client secret in the DevCore dashboard.\n\nAffected versions: SDK 3.x.\n\nCause: The application is still using a cached Bearer token obtained with the old client secret. While the token itself remains technically valid until its expiry, the old client secret can no longer be used to obtain new tokens. If the token expires before the application is redeployed with the new secret, all subsequent authentication attempts will fail.\n\nAdditionally, if the dashboard rotation was immediate (not gradual), any token refresh attempt using the old secret will immediately fail with AUTH_401.\n\nDiagnostic clues:\n- AUTH_401 errors started immediately or within one hour after a secret rotation event.\n- The errors occur on all endpoints, not a specific one.\n- Providing the new client secret resolves the issue.\n\nRecommended fix:\n1. Deploy the application with the new DEVCORE_CLIENT_SECRET immediately after rotating.\n2. Force a token refresh by restarting the service or calling DevCoreClient.invalidate_token().\n3. When rotating secrets in production, use gradual rotation: add a new secret, deploy the application, then remove the old secret.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "authentication",
+    "metadata": {
+      "product": "DevCore SDK",
+      "error_codes": ["AUTH_401"],
+      "last_updated": "2024-07"
+    }
+  },
+  {
+    "doc_id": "TS-005",
+    "title": "Persistent 429 Rate Limit Errors Despite Low Request Volume",
+    "content": "Symptom: RATE_429 errors occur even when request volume is well below the documented rate limit.\n\nAffected versions: All.\n\nCause: Rate limits are enforced per API key or OAuth client, not per server instance. If multiple application instances share the same credentials, their combined request count is counted against a single limit.\n\nAdditionally, burst limits (short-window limits) may be exceeded even when the per-minute average is within quota. DevCore enforces both a per-minute limit and a per-second burst limit.\n\nDiagnostic clues:\n- 429 errors occur mainly during startup when multiple instances initialize simultaneously.\n- Increasing the number of application instances makes the problem worse, not better.\n- X-RateLimit-Limit shows a value that seems achievable.\n\nRecommended fix:\n1. Provision separate OAuth client credentials for each application instance (SDK 3.x) or API key per instance (SDK 2.x).\n2. Add jitter to startup delays to spread initialization requests.\n3. Implement per-instance local rate limiting to stay well below the global limit.",
+    "applies_to": "*",
+    "topic": "rate_limiting",
+    "metadata": {
+      "product": "DevCore API",
+      "error_codes": ["RATE_429"],
+      "last_updated": "2024-03"
+    }
+  },
+  {
+    "doc_id": "TS-006",
+    "title": "Webhook Delivery Failures After SDK 2.x to 3.x Migration — Signature Algorithm Mismatch",
+    "content": "Symptom: Webhooks were delivered successfully under SDK 2.x but stop being received after migrating to SDK 3.x.\n\nAffected versions: SDK 3.x (failure scenario during or after migration from 2.x).\n\nCause: SDK 3.x sends webhooks with HMAC-SHA256 signatures in the 'X-DevCore-Signature-256' header. If the receiving endpoint was written for SDK 2.x, it validates the 'X-DevCore-Signature' header (HMAC-SHA1) and the 'X-DevCore-Signature-256' header is absent or ignored. The endpoint rejects the payload as unsigned/invalid.\n\nThis is the most common webhook failure during a 2.x to 3.x migration.\n\nDiagnostic clues:\n- Webhook failures began at the same time as the SDK upgrade.\n- Delivery logs show 400 or 401 responses from your endpoint.\n- The endpoint code references 'X-DevCore-Signature' (SHA1 header).\n\nRecommended fix:\n1. Update the endpoint to read 'X-DevCore-Signature-256'.\n2. Recompute the HMAC using SHA256 instead of SHA1.\n3. Both headers are sent during the transition period; your endpoint can accept both.\n4. After migration is complete, remove the old SHA1 validation.",
+    "applies_to": ">=3.0,<4.0",
+    "topic": "webhooks",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-07"
+    }
+  },
+  {
+    "doc_id": "SECURITY-001",
+    "title": "Security Best Practices for DevCore Integrations",
+    "content": "This document summarizes security best practices for applications integrating with the DevCore API.\n\nAffected versions: All.\n\nCredential hygiene:\n- Never hard-code API keys or OAuth secrets in source code.\n- Use environment variables or a secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.).\n- Rotate credentials regularly; rotate immediately if a credential is suspected to be compromised.\n\nNetwork security:\n- All DevCore API communication must use HTTPS. HTTP is rejected.\n- Validate the server certificate; do not disable SSL verification.\n\nWebhook security:\n- Always validate webhook signatures before processing the payload.\n- Use constant-time comparison (hmac.compare_digest) to prevent timing attacks.\n- Implement idempotency to safely handle duplicate deliveries.\n\nAccess control:\n- Grant the minimum required scopes to credentials.\n- Use separate credentials per application to limit blast radius of a compromise.\n- Audit API access logs regularly via the DevCore dashboard.",
+    "applies_to": "*",
+    "topic": "security",
+    "metadata": {
+      "product": "DevCore SDK",
+      "last_updated": "2024-06"
+    }
+  }
+]

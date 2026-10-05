@@ -1,0 +1,569 @@
+[
+  {
+    "case_id": "EVAL-A01",
+    "case_class": "straightforward",
+    "description": "Developer upgraded SDK from 2.8 to 3.1. All API requests now return AUTH_401. They previously used 'Authorization: ApiKey <key>'. They are on SDK 3.1.",
+    "incident": {
+      "description": "AUTH_401 on all API requests after upgrading from SDK 2.8 to SDK 3.1. We were sending 'Authorization: ApiKey' but now every request fails.",
+      "current_version": "3.1",
+      "previous_version": "2.8",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["AUTH-002", "SDK-001"],
+    "forbidden_doc_ids": ["AUTH-001", "AUTH-005"],
+    "notes": "AUTH-001 and AUTH-005 are highly relevant but for SDK 2.x and must be excluded. AUTH-002 is the correct doc."
+  },
+  {
+    "case_id": "EVAL-A02",
+    "case_class": "straightforward",
+    "description": "Developer gets HTTP 403 AUTH_403 on write operations. They have valid credentials but wrong scope.",
+    "incident": {
+      "description": "Getting AUTH_403 Forbidden when trying to create events via the API. Authentication works fine but the write endpoint rejects the request.",
+      "error_codes": ["AUTH_403"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["AUTH-003"],
+    "forbidden_doc_ids": [],
+    "notes": "AUTH-003 covers AUTH_403 for all versions. Clean straightforward case."
+  },
+  {
+    "case_id": "EVAL-A03",
+    "case_class": "straightforward",
+    "description": "Developer is hitting rate limits. Simple case with clear error code.",
+    "incident": {
+      "description": "Our integration keeps getting RATE_429 errors during batch processing jobs. How do we handle rate limiting?",
+      "error_codes": ["RATE_429"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["RATE-001", "RATE-002"],
+    "forbidden_doc_ids": [],
+    "notes": "Clear rate limit case. RATE-001 gives the fix, RATE-002 covers monitoring."
+  },
+  {
+    "case_id": "EVAL-A04",
+    "case_class": "straightforward",
+    "description": "SDK 2.x developer: API key configuration. Simple setup question.",
+    "incident": {
+      "description": "How do I configure my API key in DevCore SDK? We're on version 2.5.",
+      "current_version": "2.5",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["SDK-002", "AUTH-005"],
+    "forbidden_doc_ids": ["SDK-003"],
+    "notes": "SDK-003 is the 3.x config doc and must not be used for 2.5."
+  },
+  {
+    "case_id": "EVAL-A05",
+    "case_class": "straightforward",
+    "description": "SDK 3.x developer: OAuth client secret rotation caused AUTH_401.",
+    "incident": {
+      "description": "We rotated our OAuth client secret in the dashboard and now all API calls are failing with AUTH_401. We're on SDK 3.0.",
+      "current_version": "3.0",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["TS-004"],
+    "forbidden_doc_ids": ["AUTH-001", "AUTH-005"],
+    "notes": "TS-004 directly covers secret rotation AUTH_401 on SDK 3.x."
+  },
+  {
+    "case_id": "EVAL-A06",
+    "case_class": "straightforward",
+    "description": "Webhook delivery failure due to slow endpoint response. Simple timing issue.",
+    "incident": {
+      "description": "DevCore is showing webhook delivery failures. Our endpoint is receiving the request but taking about 8 seconds to respond. We're on SDK 2.x version 2.9.",
+      "current_version": "2.9",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["WEBHOOK-001", "WEBHOOK-003"],
+    "forbidden_doc_ids": ["WEBHOOK-002"],
+    "notes": "SDK 2.x has 5s timeout, 8s response causes failure. WEBHOOK-002 is SDK 3.x doc (wrong version trap)."
+  },
+  {
+    "case_id": "EVAL-A07",
+    "case_class": "straightforward",
+    "description": "Developer gets VALIDATION_ERR. Clear client-side field validation issue.",
+    "incident": {
+      "description": "Getting VALIDATION_ERR 422 when calling the events endpoint. The error details mention a missing required field.",
+      "error_codes": ["VALIDATION_ERR"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["ERR-001"],
+    "forbidden_doc_ids": [],
+    "notes": "ERR-001 covers VALIDATION_ERR for all versions. Straightforward."
+  },
+  {
+    "case_id": "EVAL-A08",
+    "case_class": "straightforward",
+    "description": "SDK 3.x initialization fails due to missing environment variables.",
+    "incident": {
+      "description": "Our application fails to start with a ConfigurationError about missing DEVCORE_CLIENT_ID. We're deploying on SDK 3.2 in a Docker container.",
+      "current_version": "3.2",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["TS-003", "SDK-003", "CFG-001"],
+    "forbidden_doc_ids": ["SDK-002"],
+    "notes": "SDK-002 is the 2.x config reference and should not be used for 3.2."
+  },
+  {
+    "case_id": "EVAL-B01",
+    "case_class": "multi_document",
+    "description": "Full 2.x to 3.x migration: auth change + webhook signature change + pagination change. Requires multiple docs.",
+    "incident": {
+      "description": "We're migrating from SDK 2.8 to SDK 3.1. After migration, we're getting AUTH_401, our webhooks are failing, and our pagination code breaks. What do we need to fix?",
+      "current_version": "3.1",
+      "previous_version": "2.8",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["SDK-001", "AUTH-002", "WEBHOOK-002", "API-003"],
+    "forbidden_doc_ids": ["AUTH-001", "WEBHOOK-001", "API-002"],
+    "notes": "Multi-doc migration case. Requires combining migration guide with specific fix docs. Wrong-version docs must be excluded."
+  },
+  {
+    "case_id": "EVAL-B02",
+    "case_class": "multi_document",
+    "description": "Intermittent AUTH_401 in multi-threaded SDK 3.x app with token expiry race condition.",
+    "incident": {
+      "description": "We're getting intermittent AUTH_401 errors under high load on SDK 3.0. The errors are sporadic and seem to happen more when we have many concurrent requests. We've confirmed credentials are correct.",
+      "current_version": "3.0",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["TS-001", "AUTH-004"],
+    "forbidden_doc_ids": ["AUTH-001"],
+    "notes": "Requires TS-001 for race condition and AUTH-004 for token expiry context."
+  },
+  {
+    "case_id": "EVAL-B03",
+    "case_class": "multi_document",
+    "description": "Persistent 429 errors in multi-instance deployment sharing credentials.",
+    "incident": {
+      "description": "We scaled our service to 20 instances and now we're constantly hitting RATE_429 even though each instance should be well below the limit. We're on SDK 3.1.",
+      "current_version": "3.1",
+      "error_codes": ["RATE_429"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["TS-005", "RATE-001", "RATE-002"],
+    "forbidden_doc_ids": [],
+    "notes": "TS-005 covers shared credentials rate limiting. Combines with RATE-001 and RATE-002 for complete picture."
+  },
+  {
+    "case_id": "EVAL-B04",
+    "case_class": "multi_document",
+    "description": "Webhook failures with multiple possible causes: endpoint response time + signature algorithm.",
+    "incident": {
+      "description": "Webhooks stopped working after upgrading to SDK 3.0. The dashboard shows delivery failures. We're not sure if it's our endpoint validation or a timeout issue.",
+      "current_version": "3.0",
+      "previous_version": "2.9",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["WEBHOOK-002", "TS-006", "WEBHOOK-003"],
+    "forbidden_doc_ids": ["WEBHOOK-001"],
+    "notes": "Multiple webhook docs needed. WEBHOOK-001 is wrong version (2.x)."
+  },
+  {
+    "case_id": "EVAL-B05",
+    "case_class": "multi_document",
+    "description": "Proxy environment with AUTH_401: could be proxy stripping auth headers + wrong auth format.",
+    "incident": {
+      "description": "Our SDK 3.1 application behind a corporate proxy is getting AUTH_401. We've confirmed the credentials are correct in a direct connection environment.",
+      "current_version": "3.1",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["CFG-002", "AUTH-002"],
+    "forbidden_doc_ids": ["AUTH-001"],
+    "notes": "Proxy may strip Bearer auth header. Needs CFG-002 (proxy config) + AUTH-002 (3.x auth format)."
+  },
+  {
+    "case_id": "EVAL-B06",
+    "case_class": "multi_document",
+    "description": "Performance issue: high latency + rate limit errors from tight polling loop.",
+    "incident": {
+      "description": "Our integration has high latency and keeps getting RATE_429. We're polling the events API every second to check for updates on SDK 3.1.",
+      "current_version": "3.1",
+      "error_codes": ["RATE_429"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["RATE-001", "PERF-001", "WEBHOOK-003"],
+    "forbidden_doc_ids": [],
+    "notes": "Requires understanding that polling is the antipattern (PERF-001 mentions webhooks as alternative) plus rate limit fix."
+  },
+  {
+    "case_id": "EVAL-B07",
+    "case_class": "multi_document",
+    "description": "ERR_TIMEOUT on specific endpoints + general debugging guidance.",
+    "incident": {
+      "description": "Our exports API calls keep timing out with ERR_TIMEOUT on SDK 2.8. Normal API calls work fine.",
+      "current_version": "2.8",
+      "error_codes": ["ERR_TIMEOUT"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["API-001", "SDK-004"],
+    "forbidden_doc_ids": [],
+    "notes": "API-001 covers ERR_TIMEOUT with export API guidance. SDK-004 is version-agnostic debug checklist."
+  },
+  {
+    "case_id": "EVAL-B08",
+    "case_class": "multi_document",
+    "description": "Full security concern: credential leak + webhook validation + environment best practices.",
+    "incident": {
+      "description": "We suspect our SDK 3.x OAuth credentials may have been exposed in a Git commit. What should we do and how do we secure our integration going forward?",
+      "current_version": "3.1",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["SECURITY-001", "TS-004", "CFG-001"],
+    "forbidden_doc_ids": [],
+    "notes": "Security best practices multi-doc case. SECURITY-001 is general. TS-004 covers rotating secrets. CFG-001 covers proper env var setup."
+  },
+  {
+    "case_id": "EVAL-C01",
+    "case_class": "version_conflict",
+    "description": "AUTH_401 on SDK 3.1 — highly relevant 2.x doc exists as a trap.",
+    "incident": {
+      "description": "Getting AUTH_401 after moving from SDK 2.8 to 3.1. I've confirmed the API key is valid.",
+      "current_version": "3.1",
+      "previous_version": "2.8",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["AUTH-002"],
+    "forbidden_doc_ids": ["AUTH-001", "AUTH-005"],
+    "notes": "Classic version-conflict trap. AUTH-001 is highly relevant for AUTH_401 but wrong version. AUTH-002 is correct. AUTH-005 is also 2.x trap."
+  },
+  {
+    "case_id": "EVAL-C02",
+    "case_class": "version_conflict",
+    "description": "Webhook failures on SDK 3.0 — SDK 2.x webhook doc is highly relevant trap.",
+    "incident": {
+      "description": "Our webhook endpoint is rejecting DevCore deliveries. We're on SDK 3.0.",
+      "current_version": "3.0",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["WEBHOOK-002"],
+    "forbidden_doc_ids": ["WEBHOOK-001"],
+    "notes": "WEBHOOK-001 covers the same symptom but for SDK 2.x. Must use WEBHOOK-002 for 3.x."
+  },
+  {
+    "case_id": "EVAL-C03",
+    "case_class": "version_conflict",
+    "description": "Pagination broken on SDK 3.x — offset/limit 2.x pagination doc is a trap.",
+    "incident": {
+      "description": "Our pagination code stopped working after upgrading to SDK 3.1. We're using offset and limit query parameters.",
+      "current_version": "3.1",
+      "previous_version": "2.5",
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["API-003"],
+    "forbidden_doc_ids": ["API-002"],
+    "notes": "API-002 is the 2.x pagination doc. API-003 explains cursor-based pagination for 3.x."
+  },
+  {
+    "case_id": "EVAL-C04",
+    "case_class": "version_conflict",
+    "description": "SDK configuration wrong: used DEVCORE_API_KEY env var on SDK 3.x.",
+    "incident": {
+      "description": "We set DEVCORE_API_KEY environment variable but our SDK 3.2 application is still failing to authenticate with AUTH_401.",
+      "current_version": "3.2",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["CFG-001", "SDK-003"],
+    "forbidden_doc_ids": ["SDK-002", "AUTH-005"],
+    "notes": "CFG-001 explicitly states DEVCORE_API_KEY is ignored in SDK 3.x. SDK-002 and AUTH-005 are 2.x traps."
+  },
+  {
+    "case_id": "EVAL-C05",
+    "case_class": "version_conflict",
+    "description": "Timestamp parsing broken on SDK 3.x — SDK 2.x timestamp behavior is the trap.",
+    "incident": {
+      "description": "After upgrading to SDK 3.1 from 2.9, our code that reads created_at timestamps from API responses raises ValueError: invalid literal for int().",
+      "current_version": "3.1",
+      "previous_version": "2.9",
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["API-004", "SDK-001"],
+    "forbidden_doc_ids": ["API-002"],
+    "notes": "API-004 covers the SDK 3.x timestamp format change. API-002 is an incidental 2.x trap."
+  },
+  {
+    "case_id": "EVAL-D01",
+    "case_class": "similar_error",
+    "description": "AUTH_403 vs AUTH_401 — developer confused about which error they have.",
+    "incident": {
+      "description": "Our API calls are failing with a 403 status code. We think we might have an authentication problem.",
+      "error_codes": ["AUTH_403"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["AUTH-003"],
+    "forbidden_doc_ids": ["AUTH-001", "AUTH-002"],
+    "notes": "The incident says 403 (AUTH_403) but naively the system might retrieve AUTH_401 docs too. Must correctly distinguish scope vs credential issues."
+  },
+  {
+    "case_id": "EVAL-D02",
+    "case_class": "similar_error",
+    "description": "NOT_FOUND 404 vs AUTH_403 — resource access failure ambiguity.",
+    "incident": {
+      "description": "We're getting 404 errors when accessing resources that we believe exist. We have valid credentials.",
+      "error_codes": ["NOT_FOUND"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["ERR-003"],
+    "forbidden_doc_ids": ["AUTH-003"],
+    "notes": "DevCore returns 404 for permission-hidden resources. ERR-003 explains this. AUTH-003 covers 403 (different code)."
+  },
+  {
+    "case_id": "EVAL-D03",
+    "case_class": "similar_error",
+    "description": "RATE_429 vs ERR_TIMEOUT — high-latency timeout confusion.",
+    "incident": {
+      "description": "Our API calls are very slow and sometimes never return. We're seeing ERR_TIMEOUT errors.",
+      "error_codes": ["ERR_TIMEOUT"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["API-001"],
+    "forbidden_doc_ids": ["RATE-001"],
+    "notes": "ERR_TIMEOUT is a different issue from RATE_429. The system must not conflate slow responses with rate limits."
+  },
+  {
+    "case_id": "EVAL-D04",
+    "case_class": "similar_error",
+    "description": "Webhook signature failure confused with webhook delivery timing failure.",
+    "incident": {
+      "description": "Our webhook endpoint is returning 401 to DevCore. We're not sure if it's a signature problem or something else. We're on SDK 3.1.",
+      "current_version": "3.1",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["TS-002", "WEBHOOK-002"],
+    "forbidden_doc_ids": ["WEBHOOK-001"],
+    "notes": "TS-002 covers signature validation failures (algorithm mismatch). WEBHOOK-002 covers the 3.x delivery failure context."
+  },
+  {
+    "case_id": "EVAL-E01",
+    "case_class": "near_miss",
+    "description": "Developer asks about SDK 4.x features — corpus only covers up to 3.x.",
+    "incident": {
+      "description": "We're upgrading to DevCore SDK 4.0. What authentication changes do we need to make from 3.x?",
+      "current_version": "4.0",
+      "previous_version": "3.5",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "INSUFFICIENT_EVIDENCE",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": ["AUTH-001", "AUTH-002", "AUTH-005"],
+    "notes": "Corpus covers up to SDK 3.x only. No applicable docs for SDK 4.0. System should abstain."
+  },
+  {
+    "case_id": "EVAL-E02",
+    "case_class": "near_miss",
+    "description": "General webhook question — corpus covers symptoms and fixes but not a general architecture explanation.",
+    "incident": {
+      "description": "Can you explain how DevCore webhooks work architecturally? We want to understand the delivery guarantees and retry semantics at a high level.",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "PARTIAL",
+    "gold_doc_ids": ["WEBHOOK-003"],
+    "forbidden_doc_ids": [],
+    "notes": "WEBHOOK-003 gives some information but it's troubleshooting-focused, not an architectural overview. Partial answer at best."
+  },
+  {
+    "case_id": "EVAL-E03",
+    "case_class": "near_miss",
+    "description": "Bulk operations question — general answer available but not for the specific 3.x batch format details.",
+    "incident": {
+      "description": "We want to create thousands of events as fast as possible on SDK 3.1. What's the most efficient approach?",
+      "current_version": "3.1",
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "PARTIAL",
+    "gold_doc_ids": ["PERF-002", "PERF-001"],
+    "forbidden_doc_ids": [],
+    "notes": "PERF-002 mentions the v3/batch endpoint but lacks detailed usage examples. PERF-001 adds context. Near miss — enough to give partial guidance."
+  },
+  {
+    "case_id": "EVAL-E04",
+    "case_class": "near_miss",
+    "description": "Developer asks about SLAs and uptime guarantees — not covered in corpus.",
+    "incident": {
+      "description": "What is the DevCore API uptime SLA? We need this for our service contract review.",
+      "product": "DevCore API"
+    },
+    "expected_outcome": "INSUFFICIENT_EVIDENCE",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": [],
+    "notes": "Corpus has no SLA documentation. The system should recognize it cannot answer this."
+  },
+  {
+    "case_id": "EVAL-F01",
+    "case_class": "unsupported",
+    "description": "Completely unsupported: DevCore billing and pricing questions.",
+    "incident": {
+      "description": "How much does the DevCore Enterprise tier cost? We need to compare it with our current plan.",
+      "product": "DevCore"
+    },
+    "expected_outcome": "INSUFFICIENT_EVIDENCE",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": [],
+    "notes": "No billing or pricing documentation in corpus. Must abstain."
+  },
+  {
+    "case_id": "EVAL-F02",
+    "case_class": "unsupported",
+    "description": "Completely unsupported: asking about a competitor product's integration.",
+    "incident": {
+      "description": "How do I integrate DevCore with third-party product 'AcmeMQ' for event streaming? We need message queue integration.",
+      "product": "DevCore"
+    },
+    "expected_outcome": "INSUFFICIENT_EVIDENCE",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": [],
+    "notes": "Third-party integration docs not in corpus. Corpus covers DevCore itself. Must abstain."
+  },
+  {
+    "case_id": "EVAL-G01",
+    "case_class": "missing_info",
+    "description": "AUTH_401 with no version — applicable evidence spans both 2.x and 3.x, cannot be resolved.",
+    "incident": {
+      "description": "I'm getting AUTH_401 on my API calls. How do I fix it?",
+      "error_codes": ["AUTH_401"],
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "NEEDS_INFO",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": [],
+    "notes": "AUTH_401 has fundamentally different causes and fixes in SDK 2.x vs 3.x. Without version, applicability cannot be determined. NEEDS_INFO."
+  },
+  {
+    "case_id": "EVAL-G02",
+    "case_class": "missing_info",
+    "description": "Vague description with no error code and no version.",
+    "incident": {
+      "description": "Something is wrong with our API integration. Requests aren't working.",
+      "product": "DevCore API"
+    },
+    "expected_outcome": "NEEDS_INFO",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": [],
+    "notes": "Description lacks any actionable technical signal. Cannot form a meaningful retrieval query."
+  },
+  {
+    "case_id": "EVAL-G03",
+    "case_class": "missing_info",
+    "description": "Webhook failure with no version — signature algorithm differs between 2.x and 3.x.",
+    "incident": {
+      "description": "Our webhooks are failing. The dashboard shows delivery errors but I don't know why.",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "NEEDS_INFO",
+    "expected_completeness": null,
+    "gold_doc_ids": [],
+    "forbidden_doc_ids": [],
+    "notes": "Webhook failures have different root causes in 2.x (SHA1) vs 3.x (SHA256). Version needed to select applicable doc."
+  },
+  {
+    "case_id": "EVAL-H01",
+    "case_class": "contradictory_evidence",
+    "description": "Authentication token behavior — two applicable docs describe different token TTLs.",
+    "incident": {
+      "description": "How long does a DevCore Bearer token last in SDK 3.1? We need to configure our refresh interval correctly.",
+      "current_version": "3.1",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "PARTIAL",
+    "gold_doc_ids": ["AUTH-004"],
+    "forbidden_doc_ids": [],
+    "notes": "AUTH-004 says tokens expire after 3600 seconds. AUTH-002 mentions token expiry but is less specific about the exact TTL. Slight inconsistency in precision, but not fundamental contradiction. Partial answer on specifics."
+  },
+  {
+    "case_id": "EVAL-H02",
+    "case_class": "contradictory_evidence",
+    "description": "Webhook timeout value — different applicable docs state different timeouts for SDK 3.x.",
+    "incident": {
+      "description": "What is the webhook delivery timeout for SDK 3.0? We need to make sure our endpoint responds in time.",
+      "current_version": "3.0",
+      "product": "DevCore SDK"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "FULL",
+    "gold_doc_ids": ["WEBHOOK-003", "WEBHOOK-002"],
+    "forbidden_doc_ids": ["WEBHOOK-001"],
+    "notes": "WEBHOOK-003 and WEBHOOK-002 both state 10s for SDK 3.x. Consistent, so FULL answer possible. Designed as a near-contradiction test (both docs cover it)."
+  },
+  {
+    "case_id": "EVAL-H03",
+    "case_class": "contradictory_evidence",
+    "description": "Rate limit values — docs mention different tier limits, ambiguous which tier applies.",
+    "incident": {
+      "description": "What is our rate limit? We are getting RATE_429 and need to know the exact limit so we can configure our retry logic on SDK 3.1.",
+      "current_version": "3.1",
+      "error_codes": ["RATE_429"],
+      "product": "DevCore API"
+    },
+    "expected_outcome": "ANSWERED",
+    "expected_completeness": "PARTIAL",
+    "gold_doc_ids": ["RATE-001", "RATE-002"],
+    "forbidden_doc_ids": [],
+    "notes": "RATE-001 gives multiple tier values (100/min, 1000/min) but does not know which tier the client is on. Partial answer — can explain how to check but cannot give exact value."
+  }
+]
