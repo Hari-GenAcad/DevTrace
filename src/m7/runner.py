@@ -116,8 +116,8 @@ def _build_retriever(config: EvaluationConfig) -> HybridRetriever | None:
     in retrieval-stub mode for deterministic tests).
     """
     try:
-        from src.ingestion.loader import load_corpus  # noqa: PLC0415
-        chunks = load_corpus()
+        from src.ingestion.loader import load_corpus_and_chunks  # noqa: PLC0415
+        _, chunks = load_corpus_and_chunks()
         retriever = HybridRetriever(chunks)
         retriever.load()
         logger.info("HybridRetriever loaded with %d chunks.", len(chunks))

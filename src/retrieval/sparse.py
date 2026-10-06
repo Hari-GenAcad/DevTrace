@@ -165,19 +165,28 @@ class BM25Retriever:
         indexed: list[tuple[int, float]] = [
             (i, float(scores[i])) for i in range(len(scores))
         ]
-        indexed.sort(key=lambda x: (-x[1], self._chunks[x[0]].chunk_id))
+        indexed.sort(
+            key=lambda x: (
+                -x[1],
+                getattr(self._chunks[x[0]], "chunk_id", getattr(self._chunks[x[0]], "doc_id", str(x[0]))),
+            )
+        )
 
         hits: list[BM25Hit] = []
         for idx, score in indexed[:k]:
             if score <= 0.0:
                 break   # No point returning zero-score results.
             chunk = self._chunks[idx]
+            c_id = getattr(chunk, "chunk_id", getattr(chunk, "doc_id", f"doc_{idx}"))
+            d_id = getattr(chunk, "doc_id", getattr(chunk, "chunk_id", f"doc_{idx}"))
+            applies = getattr(chunk, "applies_to", "*")
+            top = getattr(chunk, "topic", "") or ""
             hits.append(BM25Hit(
-                chunk_id=chunk.chunk_id,
-                doc_id=chunk.doc_id,
+                chunk_id=c_id,
+                doc_id=d_id,
                 content=chunk.content,
-                applies_to=chunk.applies_to,
-                topic=chunk.topic or "",
+                applies_to=applies,
+                topic=top,
                 raw_score=score,
             ))
 

@@ -262,7 +262,9 @@ class HybridRetriever:
         all_ids: set[str] = set(dense_map) | set(bm25_map)
 
         # --- 5. Build a lookup from chunk_id to chunk (for metadata) ---
-        chunk_lookup: dict[str, EvidenceChunk] = {c.chunk_id: c for c in self._chunks}
+        chunk_lookup: dict[str, Any] = {
+            getattr(c, "chunk_id", getattr(c, "doc_id", "")): c for c in self._chunks
+        }
 
         # --- 6. Compute fused scores ---
         rich_results: list[RichRetrievalResult] = []

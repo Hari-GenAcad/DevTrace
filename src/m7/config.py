@@ -19,7 +19,7 @@ from pathlib import Path
 # Default paths
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_EVAL_DATASET = _REPO_ROOT / "data" / "eval" / "eval_dataset.json"
 _DEFAULT_OUTPUT_DIR = _REPO_ROOT / "data" / "eval_results"
 
