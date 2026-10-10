@@ -543,14 +543,23 @@ def render_architecture_tab() -> None:
     )
     st.markdown(
         '<div class="architecture-flow">'
-        '<div class="architecture-node"><em>M2</em><strong>Normalize</strong><span>Extract versions, products, and error signals.</span></div>'
+        '<div class="architecture-node"><em>INPUT</em><strong>User incident</strong><span>External description, versions, error codes, and product context.</span></div>'
+        '<div class="architecture-node"><em>M8</em><strong>Adapt request</strong><span>Map form fields, choose the configured client, and invoke M6 without adding reasoning.</span></div>'
+        '<div class="architecture-node"><em>M2</em><strong>Ingest &amp; normalize</strong><span>Build stable corpus chunks and extract incident versions, products, and error signals.</span></div>'
         '<div class="architecture-node"><em>M3</em><strong>Retrieve</strong><span>Combine dense similarity with BM25 keyword search.</span></div>'
         '<div class="architecture-node"><em>M4</em><strong>Filter & diagnose</strong><span>Request missing facts and remove incompatible evidence.</span></div>'
         '<div class="architecture-node"><em>M5</em><strong>Verify</strong><span>Validate citations and independently ground every claim.</span></div>'
-        '<div class="architecture-node"><em>M6</em><strong>Survive</strong><span>Require a verified root cause and allow at most one retry.</span></div>'
-        '<div class="architecture-node"><em>M7</em><strong>Evaluate</strong><span>Compare controlled outcomes against two RAG baselines.</span></div>'
+        '<div class="architecture-node"><em>M6</em><strong>Survive &amp; assemble</strong><span>Require a verified root cause, allow at most one retry, and create the typed outcome.</span></div>'
         '<div class="architecture-node"><em>M8</em><strong>Present</strong><span>Expose the answer, evidence, and audit trail without new reasoning.</span></div>'
-        '<div class="architecture-node"><em>OUTCOME</em><strong>Answer or abstain</strong><span>Return only supported content—or explain why no answer is safe.</span></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Separate evaluation branch")
+    st.markdown(
+        '<div class="pillar-grid">'
+        '<div class="pillar-card"><strong>M7 evaluates after execution</strong><span>It runs 37 controlled fixtures against two RAG baselines and the full pipeline. Gold labels are used for scoring only and never enter production prompts.</span></div>'
+        '<div class="pillar-card"><strong>Five typed outcomes</strong><span>M6 returns ANSWERED_FULL, ANSWERED_PARTIAL, INSUFFICIENT_EVIDENCE, NEEDS_INFO, or DEGRADED; M8 only renders that result.</span></div>'
         '</div>',
         unsafe_allow_html=True,
     )

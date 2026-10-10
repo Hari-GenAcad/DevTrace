@@ -47,12 +47,13 @@ The diagram below is the canonical project architecture and the same asset inten
 The production path is:
 
 1. **M1 — Shared foundation:** Pydantic contracts, configuration, errors, outcome types, and LLM interfaces.
-2. **M2 — Normalize:** validate the incident and extract versions, products, error codes, and technical signals.
-3. **M3 — Retrieve:** combine dense semantic search with BM25 exact-term search, then fuse and boost the rankings.
-4. **M4 — Gate and diagnose:** request missing decisive information, reject wrong-version/out-of-scope evidence, and generate structured root-cause, fix, and explanation claims.
-5. **M5 — Verify:** deterministically validate citation IDs, then semantically check support, sufficiency, and contradiction for every citation-valid claim.
-6. **M6 — Survive and retry:** require a verified root cause; when allowed, perform at most one targeted retry.
-7. **M8 — Present:** render outcomes, claims, evidence, filtering decisions, and the pipeline audit trail without performing new reasoning.
+2. **M8 — Adapt input:** the Streamlit boundary maps submitted form fields, selects the configured fake or live LLM client, initializes the retriever, and invokes the single M6 entry point. The incident itself is external user input, not a numbered module.
+3. **M2 — Ingest and normalize:** validate and chunk the controlled corpus; validate each incident and extract versions, products, error codes, and technical signals.
+4. **M3 — Retrieve:** combine dense semantic search with BM25 exact-term search, then fuse and boost the rankings.
+5. **M4 — Gate and diagnose:** request missing decisive information, reject wrong-version/out-of-scope evidence, and generate structured root-cause, fix, and explanation claims.
+6. **M5 — Verify:** deterministically validate citation IDs, then semantically check support, sufficiency, and contradiction for every citation-valid claim.
+7. **M6 — Orchestrate, survive, and assemble:** coordinate M2–M5, require a verified root cause, perform at most one targeted retry when applicable evidence remains, assemble verified claims only, and emit one of the five typed outcomes.
+8. **M8 — Present:** render the M6 result, claims, evidence, filtering decisions, and pipeline audit trail without performing new reasoning.
 
 **M7 is deliberately separate from production reasoning.** It compares Naive RAG, Threshold RAG, and the full DevTrace pipeline using a controlled evaluation dataset.
 
