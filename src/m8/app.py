@@ -544,13 +544,13 @@ def render_architecture_tab() -> None:
     st.markdown(
         '<div class="architecture-flow">'
         '<div class="architecture-node"><em>INPUT</em><strong>User incident</strong><span>External description, versions, error codes, and product context.</span></div>'
-        '<div class="architecture-node"><em>M8</em><strong>Adapt request</strong><span>Map form fields, choose the configured client, and invoke M6 without adding reasoning.</span></div>'
-        '<div class="architecture-node"><em>M2</em><strong>Ingest &amp; normalize</strong><span>Build stable corpus chunks and extract incident versions, products, and error signals.</span></div>'
-        '<div class="architecture-node"><em>M3</em><strong>Retrieve</strong><span>Combine dense similarity with BM25 keyword search.</span></div>'
-        '<div class="architecture-node"><em>M4</em><strong>Filter & diagnose</strong><span>Request missing facts and remove incompatible evidence.</span></div>'
-        '<div class="architecture-node"><em>M5</em><strong>Verify</strong><span>Validate citations and independently ground every claim.</span></div>'
-        '<div class="architecture-node"><em>M6</em><strong>Survive &amp; assemble</strong><span>Require a verified root cause, allow at most one retry, and create the typed outcome.</span></div>'
-        '<div class="architecture-node"><em>M8</em><strong>Present</strong><span>Expose the answer, evidence, and audit trail without new reasoning.</span></div>'
+        '<div class="architecture-node"><em>INTERFACE</em><strong>Prepare request</strong><span>Map form fields, choose the configured client, and start the pipeline without adding reasoning.</span></div>'
+        '<div class="architecture-node"><em>INPUT</em><strong>Ingest &amp; normalize</strong><span>Build stable corpus chunks and extract incident versions, products, and error signals.</span></div>'
+        '<div class="architecture-node"><em>SEARCH</em><strong>Retrieve</strong><span>Combine dense similarity with BM25 keyword search.</span></div>'
+        '<div class="architecture-node"><em>SAFETY</em><strong>Filter &amp; diagnose</strong><span>Request missing facts and remove incompatible evidence.</span></div>'
+        '<div class="architecture-node"><em>TRUST</em><strong>Verify</strong><span>Validate citations and independently ground every claim.</span></div>'
+        '<div class="architecture-node"><em>CONTROL</em><strong>Decide &amp; assemble</strong><span>Require a verified root cause, allow at most one retry, and create the outcome.</span></div>'
+        '<div class="architecture-node"><em>RESULT</em><strong>Present</strong><span>Expose the answer, evidence, and audit trail without new reasoning.</span></div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -558,8 +558,8 @@ def render_architecture_tab() -> None:
     st.markdown("### Separate evaluation branch")
     st.markdown(
         '<div class="pillar-grid">'
-        '<div class="pillar-card"><strong>M7 evaluates after execution</strong><span>It runs 37 controlled fixtures against two RAG baselines and the full pipeline. Gold labels are used for scoring only and never enter production prompts.</span></div>'
-        '<div class="pillar-card"><strong>Five typed outcomes</strong><span>M6 returns ANSWERED_FULL, ANSWERED_PARTIAL, INSUFFICIENT_EVIDENCE, NEEDS_INFO, or DEGRADED; M8 only renders that result.</span></div>'
+        '<div class="pillar-card"><strong>Evaluation runs separately</strong><span>It runs 37 controlled fixtures against two RAG baselines and the full pipeline. Gold labels are used for scoring only and never enter production prompts.</span></div>'
+        '<div class="pillar-card"><strong>Five typed outcomes</strong><span>The controller returns ANSWERED_FULL, ANSWERED_PARTIAL, INSUFFICIENT_EVIDENCE, NEEDS_INFO, or DEGRADED; the interface only renders that result.</span></div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -567,8 +567,8 @@ def render_architecture_tab() -> None:
     st.markdown("### Reliability invariants")
     st.markdown(
         '<div class="pillar-grid">'
-        '<div class="pillar-card"><strong>Retrieved ≠ Applicable</strong><span>Similarity does not prove version compatibility. M4 removes evidence that does not apply.</span></div>'
-        '<div class="pillar-card"><strong>Applicable ≠ Supported</strong><span>Relevant context does not make generated prose true. M5 checks each claim against the text.</span></div>'
+        '<div class="pillar-card"><strong>Retrieved ≠ Applicable</strong><span>Similarity does not prove version compatibility. The applicability filter removes evidence that does not apply.</span></div>'
+        '<div class="pillar-card"><strong>Applicable ≠ Supported</strong><span>Relevant context does not make generated prose true. Verification checks each claim against the text.</span></div>'
         '<div class="pillar-card"><strong>Supported ≠ Survived</strong><span>The root cause itself must verify before a diagnosis can enter the final answer.</span></div>'
         '<div class="pillar-card"><strong>Missing facts stop the pipeline</strong><span>When versions change the correct answer, NEEDS_INFO asks for clarification before generation.</span></div>'
         '</div>',
