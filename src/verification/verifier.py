@@ -63,7 +63,10 @@ from src.verification.models import (
     DiagnosisVerification,
     VerificationVerdict,
 )
-from src.verification.prompts import build_verification_prompt
+from src.verification.prompts import (
+    build_batch_verification_prompt,
+    build_verification_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +139,89 @@ def _parse_verifier_response(raw_text: str) -> dict[str, Any]:
         data["reason"] = str(data.get("reason", ""))
 
     return data
+
+
+def _parse_batch_verifier_response(
+    raw_text: str,
+    *,
+    expected_claim_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Parse and strictly validate one semantic result per expected claim."""
+    text = raw_text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise SchemaValidationError(
+            f"Batch verifier response is not valid JSON: {exc}."
+        ) from exc
+
+    if not isinstance(payload, dict) or not isinstance(
+        payload.get("claim_verifications"), list
+    ):
+        raise SchemaValidationError(
+            "Batch verifier response must contain a 'claim_verifications' list."
+        )
+
+    expected = set(expected_claim_ids)
+    parsed_by_id: dict[str, dict[str, Any]] = {}
+    for item in payload["claim_verifications"]:
+        if not isinstance(item, dict) or not isinstance(item.get("claim_id"), str):
+            raise SchemaValidationError(
+                "Every batch verifier item must be an object with a string claim_id."
+            )
+        claim_id = item["claim_id"]
+        if claim_id not in expected:
+            raise SchemaValidationError(
+                f"Batch verifier returned unexpected claim_id: {claim_id!r}."
+            )
+        if claim_id in parsed_by_id:
+            raise SchemaValidationError(
+                f"Batch verifier returned duplicate claim_id: {claim_id!r}."
+            )
+        semantic_fields = dict(item)
+        semantic_fields.pop("claim_id")
+        parsed_by_id[claim_id] = _parse_verifier_response(
+            json.dumps(semantic_fields)
+        )
+
+    missing = expected - parsed_by_id.keys()
+    if missing:
+        raise SchemaValidationError(
+            f"Batch verifier omitted claim IDs: {sorted(missing)}."
+        )
+    return parsed_by_id
+
+
+def _verification_from_semantic_result(
+    claim: DiagnosisClaim,
+    parsed: dict[str, Any],
+) -> ClaimVerification:
+    """Combine deterministic valid-citation status with one semantic verdict."""
+    citation_correct = parsed["citation_correct"]
+    sufficient = parsed["sufficient"]
+    contradicted = parsed["contradicted"]
+    verdict = (
+        VerificationVerdict.VERIFIED
+        if citation_correct and sufficient and not contradicted
+        else VerificationVerdict.REJECTED
+    )
+    return ClaimVerification(
+        claim_id=claim.claim_id,
+        verdict=verdict,
+        citation_validity=CitationValidity.VALID,
+        citation_correct=citation_correct,
+        sufficient=sufficient,
+        contradicted=contradicted,
+        reason=parsed["reason"],
+        supporting_evidence_ids=parsed["supporting_evidence_ids"],
+        contradicting_evidence_ids=parsed["contradicting_evidence_ids"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -320,17 +406,68 @@ def verify_diagnosis(
         len(applicable_results),
     )
 
-    claim_verifications: list[ClaimVerification] = []
+    # Existing/custom clients retain the per-call path. Gemini advertises batch
+    # support so live M5 uses one provider request while keeping one verdict per
+    # claim. This preserves the LLMClient abstraction and deterministic fakes.
+    if not getattr(llm_client, "supports_batch_verification", False):
+        claim_verifications = [
+            _verify_claim(
+                claim=claim,
+                normalized=normalized,
+                applicable_results=applicable_results,
+                applicable_id_set=applicable_id_set,
+                llm_client=llm_client,
+            )
+            for claim in diagnosis.claims
+        ]
+    else:
+        verification_by_id: dict[str, ClaimVerification] = {}
+        semantically_verifiable: list[DiagnosisClaim] = []
 
-    for claim in diagnosis.claims:
-        cv = _verify_claim(
-            claim=claim,
-            normalized=normalized,
-            applicable_results=applicable_results,
-            applicable_id_set=applicable_id_set,
-            llm_client=llm_client,
-        )
-        claim_verifications.append(cv)
+        for claim in diagnosis.claims:
+            citation_validity, _ = check_citation_validity(claim, applicable_id_set)
+            if citation_validity == CitationValidity.VALID:
+                semantically_verifiable.append(claim)
+            else:
+                verification_by_id[claim.claim_id] = _verify_claim(
+                    claim=claim,
+                    normalized=normalized,
+                    applicable_results=applicable_results,
+                    applicable_id_set=applicable_id_set,
+                    llm_client=llm_client,
+                )
+
+        if semantically_verifiable:
+            prompt = build_batch_verification_prompt(
+                normalized=normalized,
+                claims=semantically_verifiable,
+                applicable_results=applicable_results,
+            )
+            try:
+                response = llm_client.generate(prompt)
+            except LLMError:
+                raise
+            except Exception as exc:
+                raise LLMError(
+                    "Unexpected error during batch semantic verification: "
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
+            if not response.success or not response.text:
+                raise LLMError("Batch verifier LLM returned an empty/unsuccessful response.")
+
+            parsed_by_id = _parse_batch_verifier_response(
+                response.text,
+                expected_claim_ids=[claim.claim_id for claim in semantically_verifiable],
+            )
+            for claim in semantically_verifiable:
+                verification_by_id[claim.claim_id] = _verification_from_semantic_result(
+                    claim,
+                    parsed_by_id[claim.claim_id],
+                )
+
+        claim_verifications = [
+            verification_by_id[claim.claim_id] for claim in diagnosis.claims
+        ]
 
     verified_count = sum(
         1 for cv in claim_verifications if cv.verdict == VerificationVerdict.VERIFIED

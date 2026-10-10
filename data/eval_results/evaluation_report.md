@@ -5,6 +5,9 @@
 - **Dataset:** `D:\DevTrace\data\eval\eval_dataset.json`
 - **Total cases:** 37
 - **Evaluation mode:** `deterministic`
+- **Generated at (UTC):** 2026-10-10 10:11:04.203842+00:00
+- **Git commit:** `a0cfd1d891c10020515e5ca9c29db7e901aa8eff (working tree modified)`
+- **Python:** 3.11.9
 - **Baseline B threshold:** 0.4
 - **evaluation_mode:** deterministic
 - **live_model_name:** FakeLLM
@@ -12,35 +15,37 @@
 - **baseline_b_threshold:** 0.4
 - **retrieval_top_k:** 10
 
+> **Interpretation note:** Deterministic mode is a controlled fixture run that exercises production contracts. It is not an independent measurement of live-model quality.
+
 ## Aggregate Metrics Comparison
 
 | Metric | Baseline A (Naive RAG) | Baseline B (Threshold) | DevTrace (Full) |
 |:---|:---:|:---:|:---:|
 | Retrieval Hit Rate | 100.0% | 100.0% | 100.0% |
 | Forbidden Retrieval Rate ↓ | 90.0% | 90.0% | 90.0% |
-| Citation Validity Rate | N/A | N/A | N/A |
-| Citation Correctness Rate | N/A | N/A | N/A |
+| Citation Validity Rate | N/A | N/A | 100.0% |
+| Citation Correctness Rate | N/A | N/A | 100.0% |
 | False Answer Rate ↓ (lower=better) | 18.9% | 18.9% | 0.0% |
-| False Abstention Rate ↓ (lower=better) | 0.0% | 0.0% | 100.0% |
+| False Abstention Rate ↓ (lower=better) | 0.0% | 0.0% | 16.7% |
 
 ## DevTrace Outcome Distribution
 
 | Outcome | Count |
 |:---|:---:|
-| ANSWERED_FULL | 0 |
+| ANSWERED_FULL | 25 |
 | ANSWERED_PARTIAL | 0 |
-| INSUFFICIENT_EVIDENCE | 0 |
+| INSUFFICIENT_EVIDENCE | 1 |
 | NEEDS_INFO | 11 |
-| DEGRADED | 26 |
+| DEGRADED | 0 |
 | **Total** | **37** |
 
 ## DevTrace Retry Analysis
 
-- **Initial root-cause failures:** 26
-- **Retries attempted:** 26
-- **Retries succeeded:** 0
-- **Retries failed:** 26
-- **Retry recovery rate:** 0.0%
+- **Initial root-cause failures:** 4
+- **Retries attempted:** 4
+- **Retries succeeded:** 3
+- **Retries failed:** 1
+- **Retry recovery rate:** 75.0%
 - **Max retry invariant violated:** False
 
 ## Category-Level Results
@@ -79,9 +84,13 @@
 
 ## Thesis Question Answers
 
+### Is this run suitable for end-to-end performance claims?
+
+No for live-model quality claims. This controlled fixture run produced 25 verified answers and 0 DEGRADED outcomes, and demonstrates contract behavior only.
+
 ### Did DevTrace reduce false answers?
 
-DevTrace reduced the false answer rate compared to Baseline A. Baseline A: 18.9%, Baseline B: 18.9%, DevTrace: 0.0%. Reduction vs Baseline A: 18.9 percentage points.
+The observed DevTrace false-answer rate was lower than Baseline A. Baseline A: 18.9%, Baseline B: 18.9%, DevTrace: 0.0%. Difference vs Baseline A: 18.9 percentage points. Interpret this together with false abstention and outcome coverage.
 
 ### Did applicability help with version conflicts?
 
@@ -93,11 +102,11 @@ For cases where abstention was expected (7 cases), Baseline A produced false ans
 
 ### Did root-cause survival and retry improve reliability?
 
-DevTrace had 26 initial root-cause failures. Retry was attempted 26 times. Retry recovery rate: 0.0%. Max retry invariant (≤1 retry) violated: False.
+DevTrace had 4 initial root-cause failures. Retry was attempted 4 times. Retry recovery rate: 75.0%. Max retry invariant (≤1 retry) violated: False.
 
 ### How often did DevTrace abstain unnecessarily?
 
-DevTrace false abstention rate: 100.0%. Baseline A: 0.0%. Note: some abstentions are architecturally correct (NEEDS_INFO, INSUFFICIENT_EVIDENCE) and are expected in ambiguous cases.
+DevTrace false abstention rate: 16.7%. Baseline A: 0.0%. Note: some abstentions are architecturally correct (NEEDS_INFO, INSUFFICIENT_EVIDENCE) and are expected in ambiguous cases.
 
 ### Where did baselines outperform DevTrace?
 

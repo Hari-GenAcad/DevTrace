@@ -42,6 +42,7 @@ from src.verification.models import (
     VerificationVerdict,
 )
 from src.verification.verifier import (
+    _parse_batch_verifier_response,
     _parse_verifier_response,
     _verify_claim,
     verify_diagnosis,
@@ -107,6 +108,34 @@ def _make_verifier_json(
         "supporting_evidence_ids": supporting_ids if supporting_ids is not None else ["chunk-001"],
         "contradicting_evidence_ids": contradicting_ids or [],
         "reason": reason,
+    })
+
+
+class _BatchFakeLLM(FakeLLMClient):
+    supports_batch_verification = True
+
+
+def _make_batch_verifier_json(
+    claims: list[DiagnosisClaim],
+    *,
+    rejected_claim_ids: set[str] | None = None,
+) -> str:
+    rejected = rejected_claim_ids or set()
+    return json.dumps({
+        "claim_verifications": [
+            {
+                "claim_id": claim.claim_id,
+                "citation_correct": claim.claim_id not in rejected,
+                "sufficient": claim.claim_id not in rejected,
+                "contradicted": False,
+                "supporting_evidence_ids": (
+                    list(claim.evidence_ids) if claim.claim_id not in rejected else []
+                ),
+                "contradicting_evidence_ids": [],
+                "reason": "Checked independently against applicable evidence.",
+            }
+            for claim in claims
+        ]
     })
 
 
@@ -515,6 +544,46 @@ class TestVerifyDiagnosis:
         assert isinstance(result, DiagnosisVerification)
         assert result.all_verified is True
         assert len(result.claim_verifications) == 2
+
+    def test_batch_capable_client_verifies_all_claims_in_one_call(self) -> None:
+        applicable = [_make_retrieval_result("chunk-001")]
+        claims = [
+            DiagnosisClaim(
+                role=ClaimRole.ROOT_CAUSE,
+                text="Root cause.",
+                evidence_ids=["chunk-001"],
+            ),
+            DiagnosisClaim(
+                role=ClaimRole.FIX,
+                text="Fix.",
+                evidence_ids=["chunk-001"],
+            ),
+        ]
+        rejected = {claims[1].claim_id}
+        llm = _BatchFakeLLM(
+            response=_make_batch_verifier_json(
+                claims,
+                rejected_claim_ids=rejected,
+            )
+        )
+
+        result = verify_diagnosis(
+            diagnosis=DiagnosisResult(claims=claims),
+            applicable_results=applicable,
+            normalized=self._normalized(),
+            llm_client=llm,
+        )
+
+        assert llm.call_count == 1
+        assert result.verified_claim_ids == [claims[0].claim_id]
+        assert result.rejected_claim_ids == [claims[1].claim_id]
+
+    def test_batch_response_must_cover_every_claim_exactly_once(self) -> None:
+        with pytest.raises(SchemaValidationError, match="omitted claim IDs"):
+            _parse_batch_verifier_response(
+                json.dumps({"claim_verifications": []}),
+                expected_claim_ids=["claim-1"],
+            )
 
     def test_one_claim_fails_mixed_outcome(self) -> None:
         """One claim verified, one rejected → all_verified=False, mixed results."""

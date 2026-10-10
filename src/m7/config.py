@@ -33,7 +33,7 @@ class EvaluationConfig:
     ----------
     evaluation_mode:
         'deterministic' — use FakeLLMClient with scripted responses.
-        'live'          — use real Gemini API (requires GOOGLE_API_KEY env var).
+        'live'          — use real Gemini API (requires GEMINI_API_KEY env var).
 
     dataset_path:
         Path to the evaluation dataset JSON file.
@@ -49,7 +49,7 @@ class EvaluationConfig:
         Number of candidates to retrieve.
 
     live_model_name:
-        Gemini model to use in live mode (e.g. 'gemini-1.5-flash').
+        Gemini model to use in live mode (e.g. 'gemini-3.5-flash-lite').
 
     live_temperature:
         Temperature for live generation (lower = more deterministic).
@@ -72,7 +72,7 @@ class EvaluationConfig:
     output_dir: Path = field(default_factory=lambda: _DEFAULT_OUTPUT_DIR)
     baseline_b_threshold: float = 0.40
     retrieval_top_k: int = 10
-    live_model_name: str = "gemini-1.5-flash"
+    live_model_name: str = "gemini-3.5-flash-lite"
     live_temperature: float = 0.0
     run_baseline_a: bool = True
     run_baseline_b: bool = True
@@ -91,10 +91,10 @@ class EvaluationConfig:
                 f"got {self.baseline_b_threshold}."
             )
         if self.evaluation_mode == "live":
-            api_key = os.environ.get("GOOGLE_API_KEY")
+            api_key = os.environ.get("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError(
-                    "evaluation_mode='live' requires GOOGLE_API_KEY environment variable."
+                    "evaluation_mode='live' requires GEMINI_API_KEY environment variable."
                 )
 
     def model_config_info(self) -> dict[str, object]:
@@ -120,7 +120,7 @@ def config_from_env() -> EvaluationConfig:
         DEVTRACE_EVAL_TOP_K:       Retrieval top-k (int)
         DEVTRACE_EVAL_MODEL:       Gemini model name (live mode only)
         DEVTRACE_EVAL_TEMPERATURE: Generation temperature (live mode, float)
-        GOOGLE_API_KEY:            Required for live mode
+        GEMINI_API_KEY:            Required for live mode
         DEVTRACE_LOG_LEVEL:        Logging level
     """
     mode = os.environ.get("DEVTRACE_EVAL_MODE", "deterministic")
@@ -128,7 +128,7 @@ def config_from_env() -> EvaluationConfig:
     output_dir_str = os.environ.get("DEVTRACE_EVAL_OUTPUT_DIR")
     threshold_str = os.environ.get("DEVTRACE_EVAL_THRESHOLD")
     top_k_str = os.environ.get("DEVTRACE_EVAL_TOP_K")
-    model = os.environ.get("DEVTRACE_EVAL_MODEL", "gemini-1.5-flash")
+    model = os.environ.get("DEVTRACE_EVAL_MODEL", "gemini-3.5-flash-lite")
     temperature_str = os.environ.get("DEVTRACE_EVAL_TEMPERATURE")
     log_level = os.environ.get("DEVTRACE_LOG_LEVEL", "INFO")
 

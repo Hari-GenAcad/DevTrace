@@ -41,7 +41,7 @@ class DevTraceConfig(BaseSettings):
         description="Gemini API key. Must be set for production use.",
     )
     gemini_model: str = Field(
-        default="gemini-1.5-pro",
+        default="gemini-3.5-flash-lite",
         description="Pinned Gemini model name.",
     )
     gemini_temperature: float = Field(
@@ -49,6 +49,12 @@ class DevTraceConfig(BaseSettings):
         ge=0.0,
         le=2.0,
         description="LLM temperature. Default 0 for deterministic outputs.",
+    )
+    gemini_timeout_seconds: float = Field(
+        default=45.0,
+        gt=0.0,
+        le=300.0,
+        description="Per-request Gemini timeout in seconds.",
     )
 
     @field_validator("gemini_temperature", mode="before")

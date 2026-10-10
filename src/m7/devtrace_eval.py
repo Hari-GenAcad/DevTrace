@@ -21,6 +21,7 @@ from typing import Any
 from src.llm.base import LLMClient
 from src.m7.models import DevTraceEvalResult
 from src.orchestration.models import FinalOutcome, TroubleshootingResult
+from src.orchestration.assembly import root_cause_survived
 from src.orchestration.orchestrator import run_troubleshooting
 from src.retrieval.hybrid import HybridRetriever
 
@@ -163,12 +164,15 @@ def run_devtrace_eval(
     # Retry outcome
     retry_attempted = result.retry_attempted
     retry_succeeded = False
-    if retry_attempted and result.retry_verification is not None:
-        # Retry succeeded if the retry root cause survived
-        for cv in result.retry_verification.claim_verifications:
-            if cv.role == "root_cause" and cv.is_verified:
-                retry_succeeded = True
-                break
+    if (
+        retry_attempted
+        and result.retry_diagnosis is not None
+        and result.retry_verification is not None
+    ):
+        retry_succeeded = root_cause_survived(
+            result.retry_diagnosis,
+            result.retry_verification,
+        )
 
     # Serialise the full result for traceability
     try:

@@ -193,3 +193,81 @@ Return EXACTLY this JSON structure and nothing else:
 }}
 """
     return prompt
+
+
+def build_batch_verification_prompt(
+    *,
+    normalized: NormalizedIncident,
+    claims: list[DiagnosisClaim],
+    applicable_results: list[RetrievalResult],
+) -> str:
+    """Build one provider request that returns an independent verdict per claim."""
+    incident = normalized.incident
+    signals = normalized.signals
+    incident_lines = [
+        f"Description: {incident.description}",
+        f"Current version: {incident.current_version or 'not specified'}",
+    ]
+    if incident.previous_version:
+        incident_lines.append(f"Previous version: {incident.previous_version}")
+    if signals.error_codes:
+        incident_lines.append(f"Error codes: {', '.join(signals.error_codes)}")
+
+    claim_lines = []
+    for claim in claims:
+        cited = ", ".join(claim.evidence_ids) if claim.evidence_ids else "[none cited]"
+        claim_lines.append(
+            f"- claim_id={claim.claim_id}\n"
+            f"  role={claim.role.value}\n"
+            f"  text={claim.text!r}\n"
+            f"  cited_evidence_ids={cited}"
+        )
+
+    available_ids = [rr.chunk_id for rr in applicable_results]
+    evidence_block = _format_evidence_block(applicable_results)
+    expected_ids = [claim.claim_id for claim in claims]
+
+    return f"""You are an independent evidence verifier for a software troubleshooting system.
+
+Evaluate EVERY claim separately, using ONLY the applicable evidence below. Do not use
+training knowledge as evidence. A result for one claim must not influence another claim.
+Return exactly one result for every expected claim_id and no additional claim IDs.
+Return ONLY valid JSON: no markdown fences and no prose outside the JSON object.
+
+INCIDENT
+{chr(10).join(f'  {line}' for line in incident_lines)}
+
+CLAIMS TO VERIFY INDEPENDENTLY
+{chr(10).join(claim_lines)}
+
+AVAILABLE APPLICABLE EVIDENCE IDS
+{', '.join(available_ids) if available_ids else '[none]'}
+
+APPLICABLE EVIDENCE
+{evidence_block}
+
+For each claim determine:
+- citation_correct: cited evidence directly supports the claim.
+- sufficient: applicable evidence is strong enough to justify the claim.
+- contradicted: any applicable evidence conflicts with the claim.
+- supporting_evidence_ids: supporting IDs from the available list only.
+- contradicting_evidence_ids: contradicting IDs from the available list only.
+- reason: a concise evidence-based explanation specific to this claim.
+
+Expected claim IDs: {expected_ids}
+
+REQUIRED JSON OUTPUT
+{{
+  "claim_verifications": [
+    {{
+      "claim_id": "<one expected claim ID>",
+      "citation_correct": <true|false>,
+      "sufficient": <true|false>,
+      "contradicted": <true|false>,
+      "supporting_evidence_ids": ["<available evidence ID>"],
+      "contradicting_evidence_ids": ["<available evidence ID>"],
+      "reason": "<concise explanation>"
+    }}
+  ]
+}}
+"""

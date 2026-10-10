@@ -19,16 +19,20 @@ Design rules:
   - The production M6 pipeline is not modified.
   - FakeLLMClient is used in deterministic mode with a fixed scripted response
     that is consistent (not randomised) so the evaluation is reproducible.
-  - In live mode, real Gemini responses are used (requires GOOGLE_API_KEY).
+  - In live mode, real Gemini responses are used (requires GEMINI_API_KEY).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import platform
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.applicability.checker import filter_applicable
 from src.evaluation.dataset import EvaluationCase, load_eval_dataset
 from src.m7.baselines import run_baseline_a, run_baseline_b
 from src.m7.config import EvaluationConfig
@@ -59,31 +63,47 @@ logger = logging.getLogger(__name__)
 # Deterministic FakeLLM response for evaluation mode
 # ---------------------------------------------------------------------------
 
-def _make_scripted_diagnosis_json(chunk_id: str = "CHUNK-001") -> str:
+def _make_scripted_diagnosis_json(
+    chunk_id: str,
+    evidence_text: str,
+    *,
+    retry: bool = False,
+) -> str:
     """
     Return a minimal valid DiagnosisResult JSON for deterministic evaluation.
 
     In deterministic mode, the FakeLLMClient returns this for diagnosis calls.
-    The chunk_id should match a real chunk in the applicable results when possible;
-    in deterministic mode we use a placeholder since exact IDs differ per case.
+    The fixture cites an actual M4-applicable chunk and derives its claim text
+    from that chunk. It is a controlled contract fixture, not a simulation of
+    live-model quality.
     """
+    prefix = "On retry, the applicable documentation states" if retry else "The applicable documentation states"
+    grounded_text = " ".join(evidence_text.split())[:600]
     return json.dumps({
         "claims": [
             {
                 "role": "root_cause",
-                "text": "Based on the provided evidence, the root cause has been identified.",
+                "text": f"{prefix}: {grounded_text}",
                 "evidence_ids": [chunk_id],
             },
             {
                 "role": "fix",
-                "text": "Apply the fix described in the applicable documentation.",
+                "text": f"Use the documented guidance in {chunk_id}: {grounded_text}",
+                "evidence_ids": [chunk_id],
+            },
+            {
+                "role": "explanation",
+                "text": f"The cited documentation for {chunk_id} provides the supporting context: {grounded_text}",
                 "evidence_ids": [chunk_id],
             },
         ]
     })
 
 
-def _make_scripted_verifier_json(is_verified: bool = True) -> str:
+def _make_scripted_verifier_json(
+    chunk_id: str,
+    is_verified: bool = True,
+) -> str:
     """
     Return a minimal valid verifier JSON response for deterministic evaluation.
     """
@@ -91,7 +111,13 @@ def _make_scripted_verifier_json(is_verified: bool = True) -> str:
         "citation_correct": is_verified,
         "sufficient": is_verified,
         "contradicted": False,
-        "reasoning": "Deterministic evaluation mode.",
+        "supporting_evidence_ids": [chunk_id] if is_verified else [],
+        "contradicting_evidence_ids": [],
+        "reason": (
+            "Controlled fixture confirms the claim is directly grounded in the cited chunk."
+            if is_verified
+            else "Controlled fixture rejects the claim because the evidence is insufficient."
+        ),
     })
 
 
@@ -240,18 +266,67 @@ def _run_case_deterministic(
     # ------------------------------------------------------------------
     devtrace_result = None
     if config.run_devtrace:
-        # DevTrace requires: diagnosis LLM response + verifier LLM response
-        # In deterministic mode, provide scripted multi-call sequence.
-        # The FakeLLM responses are queued: [diagnosis, verifier_rc, verifier_fix, ...]
-        # We queue enough responses for a two-claim diagnosis with one attempt.
-        diagnosis_json = _make_scripted_diagnosis_json()
-        verifier_json_pass = _make_scripted_verifier_json(is_verified=True)
-        # Queue: diagnosis call + 2 verifier calls (root_cause, fix)
-        llm_dt = _build_deterministic_llm(scripted_responses=[
-            diagnosis_json,
-            verifier_json_pass,
-            verifier_json_pass,
-        ])
+        # Author the controlled fixture from the evidence the real M3/M4 path
+        # will make available. Gold labels select expected fixture behaviour,
+        # but are never passed into the production pipeline.
+        retrieved = retriever.retrieve_as_contracts(normalized)
+        applicable, _ = filter_applicable(retrieved, normalized.incident.current_version)
+        gold_ids = set(case.gold_doc_ids)
+        selected = next((item for item in applicable if item.doc_id in gold_ids), None)
+        if selected is None and applicable:
+            selected = applicable[0]
+
+        responses: list[str] = []
+        if selected is not None:
+            content = str(selected.metadata.get("content", "Applicable documentation."))
+            diagnosis_json = _make_scripted_diagnosis_json(
+                selected.chunk_id, content
+            )
+            verifier_pass = _make_scripted_verifier_json(selected.chunk_id, True)
+            verifier_fail = _make_scripted_verifier_json(selected.chunk_id, False)
+            if case.expected_outcome.value == "ANSWERED":
+                if case.case_class == "contradictory_evidence":
+                    # Exercise the real bounded-retry path: reject the initial
+                    # root cause, then accept a grounded retry using the same
+                    # applicable evidence bundle.
+                    retry_json = _make_scripted_diagnosis_json(
+                        selected.chunk_id, content, retry=True
+                    )
+                    responses = [
+                        diagnosis_json,
+                        verifier_fail,
+                        verifier_pass,
+                        verifier_pass,
+                        retry_json,
+                        verifier_pass,
+                        verifier_pass,
+                        verifier_pass,
+                    ]
+                else:
+                    responses = [
+                        diagnosis_json,
+                        verifier_pass,
+                        verifier_pass,
+                        verifier_pass,
+                    ]
+            else:
+                retry_json = _make_scripted_diagnosis_json(
+                    selected.chunk_id, content, retry=True
+                )
+                responses = [
+                    diagnosis_json,
+                    verifier_fail,
+                    verifier_fail,
+                    verifier_fail,
+                    retry_json,
+                    verifier_fail,
+                    verifier_fail,
+                    verifier_fail,
+                ]
+
+        # NEEDS_INFO paths consume no responses. Empty applicable evidence
+        # naturally exercises the production insufficient/degraded handling.
+        llm_dt = _build_deterministic_llm(scripted_responses=responses)
         try:
             devtrace_result = run_devtrace_eval(
                 description=incident.description,
@@ -452,18 +527,53 @@ def _build_summary(report: EvaluationReport) -> dict[str, str]:
     def _pct(v: float | None) -> str:
         return f"{v * 100:.1f}%" if v is not None else "N/A"
 
+    od = report.outcome_distribution
+    answered = (od.answered_full + od.answered_partial) if od else 0
+    degraded = od.degraded if od else 0
+    unreliable_comparison = bool(
+        od and (answered == 0 or degraded > answered)
+    )
+
+    if report.evaluation_mode == "deterministic":
+        suitability = (
+            f"No for live-model quality claims. This controlled fixture run produced "
+            f"{answered} verified answers and {degraded} DEGRADED outcomes, and demonstrates "
+            "contract behavior only."
+            if od
+            else "No. This is a controlled fixture run and outcome data is unavailable."
+        )
+    elif unreliable_comparison:
+        suitability = (
+            "No. Answer coverage collapsed or DEGRADED outcomes dominated this run; "
+            "false-answer comparisons must not be interpreted as demonstrated answer reliability."
+        )
+    else:
+        suitability = (
+            f"The live run produced {answered} verified answers and {degraded} DEGRADED outcomes. "
+            "Interpret comparative claims with the benchmark limitations documented below."
+            if od
+            else "No. DevTrace outcome-distribution data is unavailable."
+        )
+    summary["Is this run suitable for end-to-end performance claims?"] = suitability
+
     # Q1: Did DevTrace reduce false answers?
     if a and dt:
         dt_fa = dt.false_answer_rate or 0.0
         a_fa = a.false_answer_rate or 0.0
         reduction = a_fa - dt_fa
-        direction = "reduced" if reduction > 0 else "did not reduce"
+        direction = "was lower than" if reduction > 0 else "was not lower than"
         summary["Did DevTrace reduce false answers?"] = (
-            f"DevTrace {direction} the false answer rate compared to Baseline A. "
+            f"The observed DevTrace false-answer rate {direction} Baseline A. "
             f"Baseline A: {_pct(a.false_answer_rate)}, "
             f"Baseline B: {_pct(b.false_answer_rate if b else None)}, "
             f"DevTrace: {_pct(dt.false_answer_rate)}. "
-            f"Reduction vs Baseline A: {reduction * 100:.1f} percentage points."
+            f"Difference vs Baseline A: {reduction * 100:.1f} percentage points. "
+            + (
+                "This is not evidence of improved answer reliability because answer coverage "
+                "collapsed or degradation dominated."
+                if unreliable_comparison
+                else "Interpret this together with false abstention and outcome coverage."
+            )
         )
 
     # Q2: Did applicability help with version conflicts?
@@ -624,12 +734,32 @@ def run_evaluation(config: EvaluationConfig | None = None) -> EvaluationReport:
     # ------------------------------------------------------------------
     # Assemble report
     # ------------------------------------------------------------------
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        if subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=Path(__file__).resolve().parents[2],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip():
+            git_commit = f"{git_commit} (working tree modified)"
+    except (OSError, subprocess.SubprocessError):
+        git_commit = None
+
     report = EvaluationReport(
         dataset_path=str(config.dataset_path),
         total_cases=len(records),
         evaluation_mode=config.evaluation_mode,
         model_config_info=config.model_config_info(),
         baseline_b_threshold=config.baseline_b_threshold,
+        generated_at_utc=datetime.now(timezone.utc),
+        git_commit=git_commit,
+        python_version=platform.python_version(),
         case_records=records,
         aggregate_a=agg_a,
         aggregate_b=agg_b,

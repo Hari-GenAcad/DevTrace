@@ -7,6 +7,7 @@ Real API calls are never made during the test suite — tests use FakeLLMClient.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.config import settings
@@ -47,7 +48,13 @@ class GeminiClient(LLMClient):
     via kwargs (useful for future structured-output prompts in M4/M5).
     """
 
-    def __init__(self) -> None:
+    supports_batch_verification = True
+
+    def __init__(
+        self,
+        model_name: str | None = None,
+        temperature: float | None = None,
+    ) -> None:
         if not settings.gemini_api_key:
             raise ConfigurationError(
                 "GEMINI_API_KEY is not set. "
@@ -66,8 +73,10 @@ class GeminiClient(LLMClient):
 
         genai.configure(api_key=settings.gemini_api_key)
         self._genai = genai
-        self._model_name = settings.gemini_model
-        self._default_temperature = settings.gemini_temperature
+        self._model_name = model_name or settings.gemini_model
+        self._default_temperature = (
+            settings.gemini_temperature if temperature is None else temperature
+        )
 
     def generate(self, prompt: str, **kwargs: Any) -> GeminiResponse:
         """
@@ -91,6 +100,13 @@ class GeminiClient(LLMClient):
             {"temperature": temperature},
         )
 
+        # Do not inherit the SDK's long retry window. M6 owns workflow retry;
+        # provider retries here can otherwise leave the UI spinning for minutes.
+        request_options = dict(kwargs.pop("request_options", {}) or {})
+        request_options.setdefault("timeout", settings.gemini_timeout_seconds)
+        request_options.setdefault("retry", None)
+        kwargs["request_options"] = request_options
+
         try:
             model = self._genai.GenerativeModel(
                 model_name=self._model_name,
@@ -101,6 +117,23 @@ class GeminiClient(LLMClient):
         except Exception as exc:
             # Translate all provider errors into our typed LLMError so that
             # upper layers never need to import Gemini-specific exceptions.
-            raise LLMError(
-                f"Gemini API error: {type(exc).__name__}: {exc}"
-            ) from exc
+            error_text = str(exc)
+            if type(exc).__name__ == "ResourceExhausted" or "429" in error_text:
+                retry_match = re.search(
+                    r"(?:retry in|seconds:\s*)\s*(\d+(?:\.\d+)?)",
+                    error_text,
+                    flags=re.IGNORECASE,
+                )
+                retry_hint = (
+                    f" Retry after approximately {round(float(retry_match.group(1)))} seconds."
+                    if retry_match
+                    else " Try again after the provider quota window resets."
+                )
+                raise LLMError(
+                    "Gemini rate limit reached (HTTP 429)." + retry_hint
+                ) from exc
+            if type(exc).__name__ in {"DeadlineExceeded", "TimeoutError", "RetryError"}:
+                raise LLMError(
+                    f"Gemini request timed out after {settings.gemini_timeout_seconds:g} seconds."
+                ) from exc
+            raise LLMError(f"Gemini API error: {type(exc).__name__}: {error_text}") from exc

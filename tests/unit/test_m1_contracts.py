@@ -8,6 +8,7 @@ All tests are fully offline and deterministic (no Gemini calls, no network).
 from __future__ import annotations
 
 import os
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -416,17 +417,51 @@ class TestGeminiClientConfiguration:
         assert not issubclass(LLMError, ConfigurationError)
         assert not issubclass(ConfigurationError, LLMError)
 
+    def test_generate_uses_fail_fast_request_options(self):
+        client = GeminiClient.__new__(GeminiClient)
+        client._genai = MagicMock()
+        client._model_name = "test-model"
+        client._default_temperature = 0.0
+        response = MagicMock()
+        response.text = "OK"
+        model = client._genai.GenerativeModel.return_value
+        model.generate_content.return_value = response
+
+        client.generate("test")
+
+        request_options = model.generate_content.call_args.kwargs["request_options"]
+        assert request_options["timeout"] == pytest.approx(45.0)
+        assert request_options["retry"] is None
+
+    def test_rate_limit_error_is_concise_and_actionable(self):
+        class ResourceExhausted(Exception):
+            pass
+
+        client = GeminiClient.__new__(GeminiClient)
+        client._genai = MagicMock()
+        client._model_name = "test-model"
+        client._default_temperature = 0.0
+        client._genai.GenerativeModel.return_value.generate_content.side_effect = (
+            ResourceExhausted("429 quota exceeded; please retry in 53.4s")
+        )
+
+        with pytest.raises(LLMError, match="Retry after approximately 53 seconds"):
+            client.generate("test")
+
 
 # ===========================================================================
 # Test 15 — Configuration
 # ===========================================================================
 
 class TestConfiguration:
-    def test_defaults_are_sane(self):
+    def test_defaults_are_sane(self, monkeypatch):
         """DevTraceConfig has sensible out-of-the-box defaults."""
-        config = DevTraceConfig()
-        assert config.gemini_model == "gemini-1.5-pro"
+        for name in ("GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_TEMPERATURE", "DEVTRACE_ENV"):
+            monkeypatch.delenv(name, raising=False)
+        config = DevTraceConfig(_env_file=None)
+        assert config.gemini_model == "gemini-3.5-flash-lite"
         assert config.gemini_temperature == pytest.approx(0.0)
+        assert config.gemini_timeout_seconds == pytest.approx(45.0)
         assert config.devtrace_env == "development"
         assert config.gemini_api_key is None
 
@@ -436,7 +471,7 @@ class TestConfiguration:
         monkeypatch.setenv("GEMINI_TEMPERATURE", "0.2")
         monkeypatch.setenv("GEMINI_API_KEY", "test-key-123")
 
-        config = DevTraceConfig()
+        config = DevTraceConfig(_env_file=None)
         assert config.gemini_model == "gemini-pro-vision"
         assert config.gemini_temperature == pytest.approx(0.2)
         assert config.gemini_api_key == "test-key-123"
@@ -445,4 +480,4 @@ class TestConfiguration:
         """An invalid environment value (e.g. out-of-range temperature) is rejected."""
         monkeypatch.setenv("GEMINI_TEMPERATURE", "5.0")
         with pytest.raises(Exception):
-            DevTraceConfig()
+            DevTraceConfig(_env_file=None)

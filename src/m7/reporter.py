@@ -58,9 +58,17 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
     lines.append(f"- **Dataset:** `{report.dataset_path}`")
     lines.append(f"- **Total cases:** {report.total_cases}")
     lines.append(f"- **Evaluation mode:** `{report.evaluation_mode}`")
+    lines.append(f"- **Generated at (UTC):** {report.generated_at_utc or 'N/A'}")
+    lines.append(f"- **Git commit:** `{report.git_commit or 'N/A'}`")
+    lines.append(f"- **Python:** {report.python_version or 'N/A'}")
     lines.append(f"- **Baseline B threshold:** {report.baseline_b_threshold}")
     for k, v in report.model_config_info.items():
         lines.append(f"- **{k}:** {v}")
+    lines.append("")
+    lines.append(
+        "> **Interpretation note:** Deterministic mode is a controlled fixture run that "
+        "exercises production contracts. It is not an independent measurement of live-model quality."
+    )
     lines.append("")
 
     # ------------------------------------------------------------------

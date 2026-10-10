@@ -10,11 +10,13 @@ Tests:
   - Error sanitization helper
 """
 
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 
 from src.errors import ConfigurationError
 from src.m8.pipeline import build_llm_client, build_retriever, run_pipeline
+from src.m8.app import load_evaluation_report
 from src.m8.render import (
     _sanitize_error,
     build_evidence_display_data,
@@ -23,6 +25,9 @@ from src.m8.render import (
     claim_role_label,
     outcome_color,
     outcome_label,
+    render_final_answer,
+    render_pipeline_trace,
+    render_retry_section,
 )
 from src.models.contracts import (
     ApplicabilityResult,
@@ -228,11 +233,129 @@ def test_build_verification_display_data():
     assert verif_items[0]["verdict"] == "VERIFIED"
     assert verif_items[0]["citation_correct"] is True
     assert verif_items[0]["in_final_answer"] is True
+    assert verif_items[0]["verification_available"] is True
+
+
+def test_verification_display_marks_missing_verdict_as_unavailable():
+    claim = DiagnosisClaim(
+        claim_id="c1",
+        role=ClaimRole.ROOT_CAUSE,
+        text="Unverified root cause",
+        evidence_ids=["chunk_1"],
+    )
+    result = TroubleshootingResult(
+        incident_description="Verifier failed",
+        final_outcome=FinalOutcome.DEGRADED,
+        final_answer=VerifiedAnswer(outcome=FinalOutcome.DEGRADED),
+        initial_diagnosis=DiagnosisResult(claims=[claim]),
+    )
+
+    item = build_verification_display_data(result)[0]
+
+    assert item["verification_available"] is False
+    assert item["verdict"] == "NOT_VERIFIED"
+    assert item["citation_validity"] == "UNKNOWN"
 
 
 def test_sanitize_error():
-    secret_key = "AIzaSyD-1234567890abcdefghijklmnopqrstuvwxyz"
+    secret_key = "test-secret-1234567890abcdefghijklmnopqrstuvwxyz"
     raw_error = f"API request failed with key {secret_key} on endpoint"
     sanitized = _sanitize_error(raw_error)
     assert secret_key not in sanitized
     assert "[REDACTED]" in sanitized
+
+
+def test_render_final_answer_uses_valid_streamlit_status_state():
+    result = TroubleshootingResult(
+        incident_description="Unsupported issue",
+        final_outcome=FinalOutcome.INSUFFICIENT_EVIDENCE,
+        final_answer=VerifiedAnswer(outcome=FinalOutcome.INSUFFICIENT_EVIDENCE),
+    )
+    streamlit = MagicMock()
+
+    render_final_answer(result, streamlit)
+
+    streamlit.status.assert_called_once()
+    assert streamlit.status.call_args.kwargs["state"] == "complete"
+
+
+def test_render_retry_section_does_not_claim_success_for_degraded_result():
+    result = TroubleshootingResult(
+        incident_description="Provider verification failure",
+        final_outcome=FinalOutcome.DEGRADED,
+        final_answer=VerifiedAnswer(outcome=FinalOutcome.DEGRADED),
+        retry_attempted=False,
+    )
+    streamlit = MagicMock()
+
+    render_retry_section(result, streamlit)
+
+    streamlit.success.assert_not_called()
+    streamlit.error.assert_called_once()
+    assert "system error" in streamlit.error.call_args.args[0].lower()
+
+
+def test_pipeline_trace_uses_responsive_cards_without_metric_truncation():
+    claims = [
+        DiagnosisClaim(
+            claim_id=f"c{i}",
+            role=ClaimRole.ROOT_CAUSE if i == 0 else ClaimRole.FIX,
+            text=f"Claim {i}",
+            evidence_ids=["chunk_1"],
+        )
+        for i in range(3)
+    ]
+    result = TroubleshootingResult(
+        incident_description="Rate limit incident",
+        final_outcome=FinalOutcome.ANSWERED_FULL,
+        final_answer=VerifiedAnswer(
+            outcome=FinalOutcome.ANSWERED_FULL,
+            verified_claims=claims,
+        ),
+        initial_diagnosis=DiagnosisResult(claims=claims),
+    )
+    streamlit = MagicMock()
+
+    render_pipeline_trace(result, streamlit)
+
+    rendered = " ".join(
+        call.args[0] for call in streamlit.markdown.call_args_list if call.args
+    )
+    assert "trace-grid" in rendered
+    assert "3 claim(s)" in rendered
+    assert "Not required" in rendered
+    assert "Answered Full" in rendered
+    streamlit.metric.assert_not_called()
+
+
+def test_load_evaluation_report_uses_artifact_values(tmp_path):
+    report_path = tmp_path / "evaluation_results.json"
+    report_path.write_text(json.dumps({
+        "dataset_path": "data/eval/eval_dataset.json",
+        "total_cases": 37,
+        "evaluation_mode": "deterministic",
+        "baseline_b_threshold": 0.4,
+        "outcome_distribution": {"answered_full": 30, "total": 37},
+    }), encoding="utf-8")
+
+    report, error = load_evaluation_report(report_path)
+
+    assert error is None
+    assert report is not None
+    assert report.total_cases == 37
+    assert report.outcome_distribution is not None
+    assert report.outcome_distribution.answered_full == 30
+
+
+def test_load_evaluation_report_missing_is_honest(tmp_path):
+    report, error = load_evaluation_report(tmp_path / "missing.json")
+    assert report is None
+    assert "not found" in (error or "")
+
+
+def test_load_evaluation_report_malformed_is_honest(tmp_path):
+    report_path = tmp_path / "evaluation_results.json"
+    report_path.write_text("not-json", encoding="utf-8")
+    report, error = load_evaluation_report(report_path)
+    assert report is None
+    assert "malformed" in (error or "")

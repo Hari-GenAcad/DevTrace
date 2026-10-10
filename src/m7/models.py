@@ -19,6 +19,7 @@ Design principles:
 from __future__ import annotations
 
 from enum import Enum
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -466,6 +467,18 @@ class EvaluationReport(BaseModel):
     )
     baseline_b_threshold: float = Field(
         description="Score threshold used for Baseline B.",
+    )
+    generated_at_utc: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when this report was generated.",
+    )
+    git_commit: str | None = Field(
+        default=None,
+        description="Source commit evaluated, when Git metadata is available.",
+    )
+    python_version: str | None = Field(
+        default=None,
+        description="Python runtime version used for the evaluation.",
     )
 
     # Per-case records (machine-readable)

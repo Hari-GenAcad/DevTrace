@@ -1,7 +1,3 @@
-pydantic
-chromadb
-sentence-transformers
-rank_bm25
-pytest
-streamlit
-google-generativeai
+# Convenience install for local development. Runtime and test dependency
+# constraints are canonical in pyproject.toml.
+-e .[dev]

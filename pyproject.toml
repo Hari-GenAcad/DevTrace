@@ -1,12 +1,24 @@
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "devtrace"
 version = "0.1.0"
 description = "Evidence-Grounded Developer Troubleshooting System"
 requires-python = ">=3.11"
+dependencies = [
+    "pydantic~=2.13.5",
+    "pydantic-settings~=2.15.0",
+    "chromadb~=1.5.9",
+    "sentence-transformers~=6.1.0",
+    "rank-bm25~=0.2.2",
+    "streamlit~=1.65.0",
+    "google-generativeai~=0.8.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest~=9.1.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

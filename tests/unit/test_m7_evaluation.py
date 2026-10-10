@@ -25,6 +25,7 @@ No network calls, no Chroma index required.
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -58,6 +59,7 @@ from src.m7.metrics import (
     score_retrieval_hit,
 )
 from src.m7.models import (
+    AggregateMetrics,
     BaselineAResult,
     BaselineBResult,
     CaseMetrics,
@@ -1112,6 +1114,30 @@ class TestEvaluationConfig:
         assert info["live_model_name"] == "FakeLLM"
         assert info["evaluation_mode"] == "deterministic"
 
+    def test_live_mode_uses_canonical_gemini_key(self, monkeypatch) -> None:
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        config = EvaluationConfig(evaluation_mode="live")
+        assert config.evaluation_mode == "live"
+
+    def test_live_mode_missing_key_is_clear(self, monkeypatch) -> None:
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+            EvaluationConfig(evaluation_mode="live")
+
+    def test_live_client_constructor_contract(self, monkeypatch) -> None:
+        from src.m7.runner import _build_live_llm
+
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        config = EvaluationConfig(
+            evaluation_mode="live",
+            live_model_name="test-model",
+            live_temperature=0.25,
+        )
+        with patch("src.llm.gemini.GeminiClient") as client_cls:
+            _build_live_llm(config)
+        client_cls.assert_called_once_with(model_name="test-model", temperature=0.25)
+
 
 # ===========================================================================
 # Part 13: Dataset loading tests
@@ -1157,6 +1183,111 @@ class TestDatasetLoading:
 # ===========================================================================
 
 class TestDeterministicReproducibility:
+
+    def test_case_fixture_uses_applicable_case_specific_evidence(self) -> None:
+        from src.m7.runner import _run_case_deterministic
+        from src.models.enums import AnswerCompleteness, SystemOutcome
+
+        case = EvaluationCase(
+            case_id="FIXTURE-ANSWERED",
+            case_class="straightforward",
+            description="Controlled fixture",
+            incident=EvaluationIncident(
+                description="AUTH_401 on SDK 3.1",
+                current_version="3.1",
+                error_codes=["AUTH_401"],
+            ),
+            expected_outcome=SystemOutcome.ANSWERED,
+            expected_completeness=AnswerCompleteness.FULL,
+            gold_doc_ids=["AUTH-002"],
+            forbidden_doc_ids=["AUTH-001"],
+        )
+        retriever = _StubRetriever(results=[
+            _make_retrieval_result("AUTH-002-C01", "AUTH-002", 0.9),
+            RetrievalResult(
+                chunk_id="AUTH-001-C01",
+                doc_id="AUTH-001",
+                score=0.8,
+                source=RetrievalSource.HYBRID,
+                metadata={"content": "Wrong version", "applies_to": ">=2.0,<3.0"},
+            ),
+        ])
+
+        record = _run_case_deterministic(case, retriever, EvaluationConfig())
+
+        assert record.devtrace is not None
+        assert record.devtrace.final_outcome in {"ANSWERED_FULL", "ANSWERED_PARTIAL"}
+        assert record.devtrace.cited_chunk_ids == ["AUTH-002-C01"]
+        assert "AUTH-001" not in record.devtrace.applicable_doc_ids
+        assert record.devtrace.retry_attempted is False
+
+    def test_case_fixture_schedule_supports_failed_retry(self) -> None:
+        from src.m7.runner import _run_case_deterministic
+        from src.models.enums import SystemOutcome
+
+        case = EvaluationCase(
+            case_id="FIXTURE-UNSUPPORTED",
+            case_class="unsupported",
+            description="Controlled rejection fixture",
+            incident=EvaluationIncident(description="Unsupported AUTH_999", error_codes=["AUTH_999"]),
+            expected_outcome=SystemOutcome.INSUFFICIENT_EVIDENCE,
+            gold_doc_ids=[],
+        )
+        retriever = _StubRetriever(results=[
+            RetrievalResult(
+                chunk_id="GENERIC-C01",
+                doc_id="GENERIC",
+                score=0.7,
+                source=RetrievalSource.HYBRID,
+                metadata={"content": "Generic evidence is insufficient.", "applies_to": "*"},
+            )
+        ])
+        record = _run_case_deterministic(case, retriever, EvaluationConfig())
+
+        assert record.devtrace is not None
+        assert record.devtrace.final_outcome == "INSUFFICIENT_EVIDENCE"
+        assert record.devtrace.retry_attempted is True
+        assert record.devtrace.retry_succeeded is False
+
+    def test_contradictory_fixture_exercises_successful_single_retry(self) -> None:
+        from src.m7.runner import _run_case_deterministic
+        from src.models.enums import AnswerCompleteness, SystemOutcome
+
+        case = EvaluationCase(
+            case_id="FIXTURE-RETRY",
+            case_class="contradictory_evidence",
+            description="Controlled retry fixture",
+            incident=EvaluationIncident(
+                description="AUTH_401 on SDK 3.1",
+                current_version="3.1",
+                error_codes=["AUTH_401"],
+            ),
+            expected_outcome=SystemOutcome.ANSWERED,
+            expected_completeness=AnswerCompleteness.FULL,
+            gold_doc_ids=["AUTH-002"],
+        )
+        record = _run_case_deterministic(case, _StubRetriever(), EvaluationConfig())
+
+        assert record.devtrace is not None
+        assert record.devtrace.final_outcome == "ANSWERED_FULL"
+        assert record.devtrace.retry_attempted is True
+        assert record.devtrace.retry_succeeded is True
+
+    def test_summary_rejects_positive_claim_when_degradation_dominates(self) -> None:
+        from src.m7.runner import _build_summary
+
+        report = EvaluationReport(
+            dataset_path="fixture.json",
+            total_cases=3,
+            evaluation_mode="live",
+            baseline_b_threshold=0.4,
+            aggregate_a=AggregateMetrics(total_cases=3, false_answer_rate=0.5),
+            aggregate_devtrace=AggregateMetrics(total_cases=3, false_answer_rate=0.0),
+            outcome_distribution=OutcomeDistribution(degraded=3, total=3),
+        )
+        summary = _build_summary(report)
+        assert summary["Is this run suitable for end-to-end performance claims?"].startswith("No.")
+        assert "not evidence of improved answer reliability" in summary["Did DevTrace reduce false answers?"]
 
     def test_same_inputs_produce_same_metrics(self) -> None:
         """Running metrics twice on the same record gives the same result."""

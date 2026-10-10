@@ -23,6 +23,7 @@ Functions:
 
 from __future__ import annotations
 
+import html
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -288,6 +289,7 @@ def build_verification_display_data(result: TroubleshootingResult) -> list[dict[
             "text": claim.text,
             "evidence_ids": list(claim.evidence_ids),
             "in_final_answer": verified,
+            "verification_available": cv is not None,
             "verdict": cv.verdict.value if cv else "NOT_VERIFIED",
             "citation_validity": cv.citation_validity.value if cv else "UNKNOWN",
             "citation_correct": cv.citation_correct if cv else False,
@@ -321,10 +323,12 @@ def render_final_answer(result: TroubleshootingResult, st: Any) -> None:
     fa = result.final_answer
     outcome = result.final_outcome
 
-    color = outcome_color(outcome)
     label = outcome_label(outcome)
-
-    st.status(f"**{label}**", state=color)
+    # Streamlit status containers accept only running/complete/error. Semantic
+    # UI colors such as success/info/warning are used by other render helpers
+    # but are not valid values for this API.
+    status_state = "error" if outcome == FinalOutcome.DEGRADED else "complete"
+    st.status(f"**{label}**", state=status_state)
 
     if outcome in (FinalOutcome.ANSWERED_FULL, FinalOutcome.ANSWERED_PARTIAL):
         if fa.answer_text:
@@ -398,15 +402,26 @@ def render_pipeline_trace(result: TroubleshootingResult, st: Any) -> None:
     """
     steps = build_pipeline_trace_data(result)
 
-    st.subheader("Pipeline Trace")
-    st.caption("How DevTrace processed this incident step-by-step.")
+    st.subheader("Pipeline trace")
+    st.caption("A compact audit trail from retrieval to the final outcome.")
 
-    cols = st.columns(len(steps))
-    for col, step in zip(cols, steps):
-        with col:
-            st.metric(label=step["label"], value=str(step["value"]))
-            if step.get("detail"):
-                st.caption(step["detail"])
+    cards: list[str] = []
+    for index, step in enumerate(steps, 1):
+        value = str(step["value"])
+        if step["label"] == "Outcome":
+            value = value.replace("_", " ").title()
+        cards.append(
+            '<div class="trace-step">'
+            f'<div class="trace-index">STEP {index:02d}</div>'
+            f'<div class="trace-label">{html.escape(str(step["label"]))}</div>'
+            f'<div class="trace-value">{html.escape(value)}</div>'
+            f'<div class="trace-detail">{html.escape(str(step.get("detail") or ""))}</div>'
+            '</div>'
+        )
+    st.markdown(
+        '<div class="trace-grid">' + "".join(cards) + '</div>',
+        unsafe_allow_html=True,
+    )
 
     # Architectural invariant callout
     n_retrieved = len(result.retrieval_results)
@@ -436,45 +451,51 @@ def render_evidence_section(result: TroubleshootingResult, st: Any) -> None:
     non_applicable_items = [i for i in items if not i["applicable"]]
 
     # --- Retrieved Evidence ---
-    st.subheader(f"Retrieved Evidence ({len(items)} chunks)")
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.metric("Retrieved", len(items))
-    with col_b:
-        st.metric("Applicable (after filtering)", len(applicable_items))
+    st.subheader("Evidence trail")
+    cited_count = sum(1 for item in items if item["cited_in_final"])
+    st.caption("Inspect what retrieval found, what M4 allowed, and what the final answer cited.")
+    st.markdown(
+        '<div class="detail-stats">'
+        f'<div class="detail-stat"><span>Retrieved</span><strong>{len(items)}</strong></div>'
+        f'<div class="detail-stat"><span>Applicable</span><strong>{len(applicable_items)}</strong></div>'
+        f'<div class="detail-stat"><span>Cited in answer</span><strong>{cited_count}</strong></div>'
+        f'<div class="detail-stat"><span>Excluded</span><strong>{len(non_applicable_items)}</strong></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     # --- Applicable Evidence ---
     if applicable_items:
-        st.markdown("#### ✅ Applicable Evidence")
-        st.caption("These chunks passed M4 version-specific applicability filtering.")
+        st.markdown("#### Applicable evidence")
+        st.caption("These chunks passed version and scope filtering. Open a card to inspect its content.")
         for item in applicable_items:
-            cited_badge = " 📌 **CITED IN ANSWER**" if item["cited_in_final"] else ""
+            cited_badge = " · CITED" if item["cited_in_final"] else ""
             with st.expander(
-                f"**{item['chunk_id']}** — {item['title'] or item['doc_id']}{cited_badge}",
-                expanded=item["cited_in_final"],
+                f"{item['chunk_id']} — {item['title'] or item['doc_id']}{cited_badge}",
+                expanded=False,
             ):
-                cols = st.columns(3)
-                cols[0].metric("Score", f"{item['score']:.3f}")
-                cols[1].metric("Version Range", item["applies_to"] or "*")
-                cols[2].metric("Source", item["source"])
+                st.markdown(
+                    '<div class="detail-stats">'
+                    f'<div class="detail-stat"><span>Score</span><strong>{item["score"]:.3f}</strong></div>'
+                    f'<div class="detail-stat"><span>Version</span><strong>{html.escape(str(item["applies_to"] or "*"))}</strong></div>'
+                    f'<div class="detail-stat"><span>Source</span><strong>{html.escape(str(item["source"]))}</strong></div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
                 if item["topic"]:
-                    st.caption(f"Topic: {item['topic']}")
+                    st.markdown(f'<div class="meta-line"><strong>Topic</strong> · {html.escape(str(item["topic"]))}</div>', unsafe_allow_html=True)
                 if item["applicability_reason"]:
-                    st.caption(f"Applicability: {item['applicability_reason']}")
+                    st.markdown(f'<div class="meta-line"><strong>Applicability</strong> · {html.escape(str(item["applicability_reason"]))}</div>', unsafe_allow_html=True)
                 if item["content"]:
-                    st.text_area(
-                        "Content",
-                        value=item["content"],
-                        height=120,
-                        disabled=True,
-                        key=f"ev_app_{item['chunk_id']}",
+                    st.markdown(
+                        f'<div class="evidence-content">{html.escape(str(item["content"]))}</div>',
+                        unsafe_allow_html=True,
                     )
 
     # --- Non-Applicable Evidence ---
     if non_applicable_items:
         with st.expander(
-            f"🚫 Not Applicable ({len(non_applicable_items)} chunks excluded by M4)",
+            f"Excluded by applicability filtering ({len(non_applicable_items)})",
             expanded=False,
         ):
             st.caption(
@@ -486,10 +507,14 @@ def render_evidence_section(result: TroubleshootingResult, st: Any) -> None:
                     f"{item['chunk_id']} — {item['title'] or item['doc_id']}",
                     expanded=False,
                 ):
-                    cols = st.columns(3)
-                    cols[0].metric("Score", f"{item['score']:.3f}")
-                    cols[1].metric("Version Range", item["applies_to"] or "*")
-                    cols[2].metric("Source", item["source"])
+                    st.markdown(
+                        '<div class="detail-stats">'
+                        f'<div class="detail-stat"><span>Score</span><strong>{item["score"]:.3f}</strong></div>'
+                        f'<div class="detail-stat"><span>Version</span><strong>{html.escape(str(item["applies_to"] or "*"))}</strong></div>'
+                        f'<div class="detail-stat"><span>Source</span><strong>{html.escape(str(item["source"]))}</strong></div>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
                     if item["applicability_reason"]:
                         st.caption(f"Excluded: {item['applicability_reason']}")
 
@@ -511,7 +536,7 @@ def render_verification_section(result: TroubleshootingResult, st: Any) -> None:
             st.info("No diagnosis claims available to display.")
         return
 
-    st.subheader("Claim Verification (M5)")
+    st.subheader("Claim verification")
     st.caption(
         "Each claim generated by the diagnosis step is independently verified "
         "against the applicable evidence bundle."
@@ -532,24 +557,37 @@ def render_verification_section(result: TroubleshootingResult, st: Any) -> None:
 
         with st.expander(
             f"{icon} **{item['role']}**{retry_label}{final_badge}",
-            expanded=in_final,
+            expanded=in_final and item["role"] == "Root Cause",
         ):
-            st.markdown(f"*{item['text']}*")
+            st.markdown(
+                f'<div class="claim-copy">{html.escape(str(item["text"]))}</div>',
+                unsafe_allow_html=True,
+            )
 
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Verdict", verdict)
-            col2.metric("Citation Valid", item["citation_validity"])
-            col3.metric("Semantically Correct", "✓" if item["citation_correct"] else "✗")
-            col4.metric("Contradicted", "⚠️ Yes" if item["contradicted"] else "No")
+            if item["verification_available"]:
+                semantic_label = "Supported" if item["citation_correct"] else "Not supported"
+                contradicted_label = "⚠️ Yes" if item["contradicted"] else "No"
+            else:
+                semantic_label = "UNKNOWN"
+                contradicted_label = "UNKNOWN"
+            st.markdown(
+                '<div class="detail-stats">'
+                f'<div class="detail-stat"><span>Verdict</span><strong>{html.escape(verdict.replace("_", " ").title())}</strong></div>'
+                f'<div class="detail-stat"><span>Citation</span><strong>{html.escape(str(item["citation_validity"]).title())}</strong></div>'
+                f'<div class="detail-stat"><span>Semantic support</span><strong>{html.escape(semantic_label)}</strong></div>'
+                f'<div class="detail-stat"><span>Contradicted</span><strong>{html.escape(contradicted_label)}</strong></div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
             if item["reason"]:
-                st.caption(f"Verifier reasoning: {item['reason']}")
+                st.markdown(f'<div class="meta-line"><strong>Verifier reasoning</strong> · {html.escape(str(item["reason"]))}</div>', unsafe_allow_html=True)
 
             if item["evidence_ids"]:
-                st.caption(f"Cited evidence: {', '.join(item['evidence_ids'])}")
+                st.markdown(f'<div class="meta-line"><strong>Cited evidence</strong> · {html.escape(", ".join(item["evidence_ids"]))}</div>', unsafe_allow_html=True)
 
             if item["supporting_evidence_ids"]:
-                st.caption(f"Supporting: {', '.join(item['supporting_evidence_ids'])}")
+                st.markdown(f'<div class="meta-line"><strong>Supporting evidence</strong> · {html.escape(", ".join(item["supporting_evidence_ids"]))}</div>', unsafe_allow_html=True)
 
             if item["contradicting_evidence_ids"]:
                 st.warning(
@@ -567,7 +605,20 @@ def render_retry_section(result: TroubleshootingResult, st: Any) -> None:
     st.subheader("Retry Behaviour")
 
     if not result.retry_attempted:
-        st.success("✅ Retry not required — root cause was verified on first attempt.")
+        if result.final_outcome in (
+            FinalOutcome.ANSWERED_FULL,
+            FinalOutcome.ANSWERED_PARTIAL,
+        ):
+            st.success("✅ Retry not required — root cause was verified on first attempt.")
+        elif result.final_outcome == FinalOutcome.DEGRADED:
+            st.error(
+                "❌ Retry was not attempted because a system error interrupted "
+                "the workflow before retry evaluation could complete."
+            )
+        elif result.final_outcome == FinalOutcome.NEEDS_INFO:
+            st.info("ℹ️ Retry was not attempted because more incident information is required.")
+        else:
+            st.info("ℹ️ No retry was attempted; no root cause was verified.")
         return
 
     st.warning(f"⚡ One targeted retry was triggered.")

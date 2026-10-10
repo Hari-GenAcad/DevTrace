@@ -43,7 +43,12 @@ from src.m7.models import (
     EvaluationReport,
     SystemLabel,
 )
-from src.m7.runner import run_evaluation
+
+
+def run_evaluation(*args, **kwargs):
+    """Lazily import the runner so ``python -m src.m7.runner`` is warning-free."""
+    from src.m7.runner import run_evaluation as _run_evaluation
+    return _run_evaluation(*args, **kwargs)
 
 __all__ = [
     # Metrics
