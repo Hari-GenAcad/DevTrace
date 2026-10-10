@@ -46,26 +46,26 @@ The diagram below is the canonical project architecture and the same asset inten
 
 The production path is:
 
-1. **M1 — Shared foundation:** Pydantic contracts, configuration, errors, outcome types, and LLM interfaces.
-2. **M8 — Adapt input:** the Streamlit boundary maps submitted form fields, selects the configured fake or live LLM client, initializes the retriever, and invokes the single M6 entry point. The incident itself is external user input, not a numbered module.
-3. **M2 — Ingest and normalize:** validate and chunk the controlled corpus; validate each incident and extract versions, products, error codes, and technical signals.
-4. **M3 — Retrieve:** combine dense semantic search with BM25 exact-term search, then fuse and boost the rankings.
-5. **M4 — Gate and diagnose:** request missing decisive information, reject wrong-version/out-of-scope evidence, and generate structured root-cause, fix, and explanation claims.
-6. **M5 — Verify:** deterministically validate citation IDs, then semantically check support, sufficiency, and contradiction for every citation-valid claim.
-7. **M6 — Orchestrate, survive, and assemble:** coordinate M2–M5, require a verified root cause, perform at most one targeted retry when applicable evidence remains, assemble verified claims only, and emit one of the five typed outcomes.
-8. **M8 — Present:** render the M6 result, claims, evidence, filtering decisions, and pipeline audit trail without performing new reasoning.
+1. **Shared foundation:** Pydantic contracts, configuration, errors, outcome types, and LLM interfaces.
+2. **Prepare the request:** the Streamlit boundary maps the submitted form fields, selects the fake or live LLM client, initializes the retriever, and starts the pipeline.
+3. **Ingest and normalize:** validate and chunk the controlled corpus; validate each incident and extract versions, products, error codes, and technical signals.
+4. **Retrieve:** combine dense semantic search with BM25 exact-term search, then fuse and boost the rankings.
+5. **Filter and diagnose:** request missing key information, reject wrong-version or out-of-scope evidence, and generate structured root-cause, fix, and explanation claims.
+6. **Verify:** validate citation IDs first, then check support, sufficiency, and contradiction for every citation-valid claim.
+7. **Decide and assemble:** require a verified root cause, perform at most one targeted retry when applicable evidence remains, assemble verified claims only, and emit one of the five outcomes.
+8. **Present:** render the result, claims, evidence, filtering decisions, and pipeline audit trail without adding new reasoning.
 
-**M7 is deliberately separate from production reasoning.** It compares Naive RAG, Threshold RAG, and the full DevTrace pipeline using a controlled evaluation dataset.
+**Evaluation is deliberately separate from production reasoning.** It compares Naive RAG, Threshold RAG, and the full DevTrace pipeline using a controlled evaluation dataset.
 
 ## Important design choices
 
 ### Applicability is evaluated before generation
 
-M4 receives retrieved candidates but passes only applicable evidence to diagnosis and verification. Wrong-version documents can remain visible in the audit trail while being structurally prevented from influencing the answer.
+The applicability filter receives retrieved candidates but passes only applicable evidence to diagnosis and verification. Wrong-version documents can remain visible in the audit trail while being structurally prevented from influencing the answer.
 
 ### Citation validity is deterministic
 
-Before semantic verification, M5 checks that every cited chunk ID exists in the applicable evidence bundle. Missing, invented, or previously excluded citations are rejected without an LLM call.
+Before semantic verification, the pipeline checks that every cited chunk ID exists in the applicable evidence bundle. Missing, invented, or previously excluded citations are rejected without an LLM call.
 
 ### Semantic verification remains per claim
 
@@ -79,11 +79,11 @@ This reduces a typical successful execution from approximately one diagnosis cal
 
 ### Root-cause survival is stricter than claim verification
 
-A verified fix or explanation cannot rescue an unverified root cause. M6 assembles an answer only when the root-cause claim survives M5.
+A verified fix or explanation cannot rescue an unverified root cause. The controller assembles an answer only when the root-cause claim survives verification.
 
 ### Retry is bounded
 
-M6 permits at most one targeted retry and only when applicable evidence remains. The retry prompt includes the rejected claims and verifier feedback; a second retry is structurally impossible.
+The controller permits at most one targeted retry and only when applicable evidence remains. The retry prompt includes the rejected claims and verifier feedback; a second retry is structurally impossible.
 
 ### Evaluation cannot alter production reasoning
 
@@ -101,8 +101,8 @@ Gemini requests default to a 45-second timeout, SDK-level long retries are disab
 - **Claim-level grounding:** an answer is assembled from surviving claims rather than unverified generated prose.
 - **Safe early exits:** ambiguity, unsupported questions, and system errors have distinct outcomes.
 - **Bounded recovery:** one targeted retry improves recoverability without creating an uncontrolled loop.
-- **Reproducible evaluation:** deterministic fixtures exercise the real M1–M6 contracts and produce JSON and Markdown artifacts.
-- **Provider-efficient verification:** live M5 preserves independent verdicts while using one batched model request.
+- **Reproducible evaluation:** deterministic fixtures exercise the real production-pipeline contracts and produce JSON and Markdown artifacts.
+- **Provider-efficient verification:** live verification preserves independent verdicts while using one batched model request.
 
 ## Technology stack
 
@@ -228,7 +228,7 @@ Expected behavior:
 
 - the answer explains the SDK 3.x move from raw API keys to OAuth 2.0 Bearer tokens;
 - `AUTH-002` or other applicable SDK 3.x evidence supports the diagnosis;
-- highly relevant SDK 2.x documents such as `AUTH-001` and `AUTH-005` may be retrieved but must be excluded by M4;
+- highly relevant SDK 2.x documents such as `AUTH-001` and `AUTH-005` may be retrieved but must be excluded by the applicability filter;
 - excluded evidence must not be cited in the final answer;
 - the fix removes `Authorization: ApiKey ...`, provisions OAuth client credentials, and sends `Authorization: Bearer <token>`.
 
@@ -289,7 +289,7 @@ The committed deterministic report contains 37 cases:
 
 These numbers demonstrate deterministic contract behavior, not independent live-model quality. The corpus and benchmark were authored for this project, and the fake responses are controlled fixtures. Claims about real model quality require a separately identified live evaluation.
 
-Also note that a high forbidden-document **retrieval** rate is not itself a failure in DevTrace: the architecture expects retrieval to be broad. The key safety measurement is whether M4 excludes incompatible evidence before diagnosis and whether M5 prevents unsupported claims from surviving.
+Also note that a high forbidden-document **retrieval** rate is not itself a failure in DevTrace: the architecture expects retrieval to be broad. The key safety measurement is whether the applicability filter excludes incompatible evidence before diagnosis and whether claim verification prevents unsupported claims from surviving.
 
 ## Reproducible five-minute walkthrough
 
